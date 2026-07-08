@@ -1,0 +1,14 @@
+WarPigs Session Stats
+Session: 09m 51s
+War plan rounds: 0
+
+Activities completed:
+  Helltide: 0
+  Boss:     0
+  Hordes:   0
+  Pit:      1
+  Undercity:0
+  NMD:      0
+
+Total activities: 1
+Last: pit (WarPlans_QST_ThePit)
