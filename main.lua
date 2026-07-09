@@ -19,7 +19,7 @@ do
         local stale = {
             'gui', 'core.settings', 'core.orchestrator', 'core.external',
             'core.plugin_registry', 'core.plugin_resolver',
-            'core.plugin_catalog', 'core.scripts_scan', 'core.combat',
+            'core.plugin_catalog', 'core.scripts_scan',
             'core.navigation', 'core.stuck_watchdog',
             'core.orchestrator.alfred_coordination',
             'core.orchestrator.raven_coordination',

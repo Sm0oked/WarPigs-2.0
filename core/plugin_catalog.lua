@@ -23,6 +23,9 @@ M.folders = {
     Reaper = {
         boss = { global = 'ReaperPlugin', label = 'Reaper' },
     },
+    NavCore = {
+        nav = { global = 'NavCorePlugin', label = 'NavCore' },
+    },
     Batmobile = {
         nav = { global = 'BatmobilePlugin', label = 'Batmobile' },
     },
@@ -52,6 +55,68 @@ M.folders = {
         },
     },
 }
+
+-- .pack basename (no extension) -> catalog folder_key used in M.folders
+M.pack_aliases = {
+    ['BetterHelltide']           = 'BetterHelltide',
+    ['BetterHelltide (3)']       = 'BetterHelltide',
+    ['SteroidAlfredV2-1.1.3']    = 'BetterAlfred',
+    ['SteroidAlfredV2-1.1.2']    = 'BetterAlfred',
+    ['SteroidAlfredV2-1.1.1']    = 'BetterAlfred',
+    ['LooteerV3']                 = 'LooteerV3',
+    ['HordeDev-1.3.9']           = 'Infernal Horde',
+}
+
+-- Unpacked folder names on disk that map to a catalog folder_key
+M.disk_folder_aliases = {
+    ['HordeDev-1.3.9'] = 'Infernal Horde',
+}
+
+function M.folder_key_for_pack_basename(basename)
+    if not basename or basename == '' then return nil end
+    basename = basename:gsub('%.pack$', '')
+    if M.pack_aliases[basename] then
+        return M.pack_aliases[basename]
+    end
+    if M.folders[basename] then
+        return basename
+    end
+    if basename:match('^BetterHelltide') then return 'BetterHelltide' end
+    if basename:match('^SteroidAlfred') or basename:match('^SteroidUtils') then return 'BetterAlfred' end
+    if basename:match('^Looteer') then return 'LooteerV3' end
+    if basename:match('^HordeDev') then return 'Infernal Horde' end
+    return basename
+end
+
+function M.pack_filenames_to_probe()
+    local seen, out = {}, {}
+    local function add(name)
+        if name and name ~= '' and not seen[name] then
+            seen[name] = true
+            out[#out + 1] = name
+        end
+    end
+    for folder_key in pairs(M.folders) do
+        add(folder_key .. '.pack')
+    end
+    for pack_base in pairs(M.pack_aliases) do
+        add(pack_base .. '.pack')
+    end
+    add('BetterHelltide.pack')
+    add('BetterHelltide (3).pack')
+    return out
+end
+
+function M.resolve_scan_key(rel_path)
+    if not rel_path or rel_path == '' then return nil end
+    rel_path = rel_path:gsub('\\', '/')
+    if rel_path:match('%.pack$') then
+        local base = rel_path:gsub('%.pack$', ''):match('([^/]+)$') or rel_path
+        return M.folder_key_for_pack_basename(base)
+    end
+    if M.folders[rel_path] then return rel_path end
+    return rel_path
+end
 
 function M.all_folder_keys()
     local keys = {}
@@ -97,6 +162,20 @@ function M.unmapped_folders(folder_map)
     end
     table.sort(unknown)
     return unknown
+end
+
+function M.installed_scan_hit(registry_folder, folder_map)
+    if not registry_folder or registry_folder == '' then return false end
+    if folder_map[registry_folder] then return true end
+    if M.disk_folder_aliases and M.disk_folder_aliases[registry_folder] then
+        return folder_map[M.disk_folder_aliases[registry_folder]] ~= nil
+    end
+    for pack_base, catalog_key in pairs(M.pack_aliases) do
+        if registry_folder == pack_base and folder_map[catalog_key] then
+            return true
+        end
+    end
+    return false
 end
 
 return M

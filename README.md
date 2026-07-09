@@ -1,8 +1,8 @@
 # WarPigs Orchestrator
 
-**Version 2.0.0** — WarPlans quest orchestrator for Diablo IV (QQT scripts).
+**Version 2.0.1** — WarPlans quest orchestrator for Diablo IV (QQT scripts).
 
-WarPigs watches your active WarPlans quests and automatically enables the right activity plugins (pit, helltide, undercity, hordes, boss lairs), handles town transitions (Alfred, SilentRaven, teleport), and keeps your combat rotation running while questing.
+WarPigs watches your active WarPlans quests and automatically enables the right activity plugins (pit, helltide, undercity, hordes, boss lairs), handles town transitions (Alfred, SilentRaven, teleport). Each activity bot handles its own combat rotation.
 
 ---
 
@@ -23,31 +23,28 @@ Each WarPlans activity type maps to a **role**. WarPigs resolves that role to a 
 | **Infernal Hordes**    | Infernal Horde                                    | `InfernalHordesPlugin`                                            |
 | **Boss lairs**         | Reaper                                            | `ReaperPlugin`                                                    |
 | **Navigation**         | Batmobile, Frigate                                | `BatmobilePlugin`, `FrigatePlugin`                                |
-| **Combat rotation**    | Universal Rotation, V1per WW Barb, Scmurd Warlock | `UNIVERSAL_ROTATION`, `BARBARIAN_ROTATION`, `WarlockScmurdPlugin` |
 | **Alfred**             | Better Alfred, Steroid Alfred, Alfred The Butler  | `AlfredTheButlerPlugin` / `PLUGIN_alfred_the_butler`              |
 
 
 Quest entries in `core/orchestrator.lua` use **role markers** (e.g. `__helltide__`, `__pit__`) instead of fixed plugin names. The resolver turns those markers into whatever plugin you (or Auto) selected.
 
-**Example:** Switching from V1per WW Barb to Universal Rotation is a dropdown under **Plugin Selection → Combat rotation** when both rotations are loaded. With only one loaded, Auto picks it with no dropdown.
+**Example:** Switching helltide bots is a dropdown under **Plugin Selection → Helltide** when both HelltideRevamped and BetterHelltide are installed.
 
 ### 2. Auto-detect (default)
 
 In **Auto mode** (default), WarPigs scans which plugin globals are actually loaded in QQT and uses the first match for each role.
 
 - **One plugin loaded** → used automatically; menu shows a simple status line, e.g. `Helltide: HelltideRevamped`.
-- **Two or more loaded** → a dropdown appears so you can choose (e.g. WW Barb vs Universal).
+- **Two or more loaded** → a dropdown appears so you can choose.
 - **None loaded** → setup warning when that activity is needed.
-
-This fixed a critical bug from early modular builds where Helltide was hard-forced to `BetterHelltidePlugin` even when only `HelltideRevamped` was installed.
 
 ### 3. Manual plugin selection (optional)
 
 Enable **Manual plugin selection** under **Plugin Selection** to show every task dropdown at once, regardless of how many plugins are loaded.
 
-### 4. Combat rotation management
+### 4. Combat rotation (not managed by WarPigs)
 
-When **Manage combat rotation** is on, WarPigs enables your chosen rotation while a WarPlans quest (or pit filler / transition) is active and leaves rotations alone while idle in town.
+WarPigs does **not** enable or disable Universal Rotation, WW Barb, or other class rotations. Enable your rotation in QQT and let each activity plugin (HelltideRevamped, Arkham Asylum, Reaper, etc.) coordinate combat internally.
 
 ### 5. Session stats overlay
 
@@ -57,7 +54,7 @@ Optional on-screen panel (position, opacity, font size). Works **independently**
 
 
 
-## Menu guide (v2.0.0)
+## Menu guide (v2.0.1)
 
 Open: **Z | War Pigs | Orchestrator**
 
@@ -70,6 +67,8 @@ Open: **Z | War Pigs | Orchestrator**
 
 ### Plugin Selection
 
+- **Scan entries** — Manually scan `scripts/` for plugin folders and `.pack` files (see [Plugin scan & .pack files](#plugin-scan--pack-files) below).
+- **Only show installed plugins** — After a scan, hide choices that are not on disk / not loaded.
 - Auto status lines per task, or dropdowns when ambiguous / manual mode is on.
 - **Manual plugin selection** — Show all task dropdowns.
 - **Setup** warnings if a required plugin is not loaded.
@@ -83,7 +82,6 @@ Open: **Z | War Pigs | Orchestrator**
 - **Run pit after turn-in** — Pit filler when no WarPlans quest is active.
 - **Skip boss chest** — Disable boss plugin when chest spawns.
 - **Manage orbwalker** — Force orbwalker clear ON before each managed plugin.
-- **Manage combat rotation** — Auto-enable rotation during quests.
 - **Stuck recovery** — Teleport to Temis and reset if movement stalls for several minutes.
 
 
@@ -105,9 +103,8 @@ main.lua
   └── core/orchestrator.lua      WarPlans quest → plugin handoff logic
         ├── core/plugin_registry.lua   Roles, choices, auto_globals lists
         ├── core/plugin_resolver.lua   Auto-detect + resolve markers → _G globals
-        ├── core/plugin_catalog.lua    Folder name → role mapping for scanner
-        ├── core/scripts_scan.lua      Discover plugin folders under scripts/
-        ├── core/combat.lua            Rotation enable/disable coordination
+        ├── core/plugin_catalog.lua    Folder / .pack name → role mapping for scanner
+        ├── core/scripts_scan.lua      Discover plugin folders and .pack files under scripts/
         ├── core/navigation.lua        Batmobile / Frigate walks
         ├── core/state_tracker.lua     In-memory status (on-screen status line)
         ├── core/session_stats.lua     Overlay counters & persistence
@@ -123,7 +120,8 @@ main.lua
 | -------------------------- | ----------------------------------------------------------- |
 | `core/plugin_registry.lua` | Define roles, choices, and `auto_globals` probe order       |
 | `core/plugin_resolver.lua` | Turn menu choice / Auto into `_G` plugin name               |
-| `core/plugin_catalog.lua`  | Map `scripts/` folder names to roles for discovery          |
+| `core/plugin_catalog.lua`  | Map `scripts/` folder names and `.pack` basenames to roles |
+| `core/scripts_scan.lua`    | Discover folders (`main.lua`) and `.pack` files in `scripts/` |
 | `core/orchestrator.lua`    | `quest_plugin_map` — WarPlans quest patterns → role markers |
 
 
@@ -139,17 +137,92 @@ WarPlans quest keys still go in `orchestrator.quest_plugin_map`; use `registry.R
 
 ---
 
+## Plugin scan & .pack files
+
+Many closed-source QQT plugins ship as **`.pack` files** placed directly in the `scripts/` root (not inside subfolders). Examples:
+
+```
+c:\diablo_qqt\scripts\BetterHelltide-v1.7.9.pack
+c:\diablo_qqt\scripts\LooteerV3-1.6.1.pack
+c:\diablo_qqt\scripts\SteroidUtils-V-1.0.1.pack
+```
+
+WarPigs must discover these so **Only show installed plugins** and manual dropdowns treat pack-only bots (e.g. BetterHelltide) as installed even when there is no unpacked folder with `main.lua`.
+
+### How to scan
+
+1. Open **Z | War Pigs → Plugin Selection**.
+2. Click **Scan entries** (runs once per click; no background scanning).
+3. Check the summary line and console output, e.g.  
+   `[WarPigs] Plugin scan complete — 12 folder(s), 3 .pack(s) in c:\diablo_qqt\scripts`
+4. The menu also shows **Scripts folder:** so you can confirm the correct root is used.
+
+On Windows, listing `.pack` files uses a one-shot `dir /b *.pack` via `io.popen` when you click **Scan entries**. This may cause a brief CMD flash (same pattern as Universal Rotation profile discovery).
+
+### What the scanner checks
+
+| Source | What it finds |
+| ------ | ------------- |
+| **Catalog folders** | Subfolders under `scripts/` that contain `main.lua` (e.g. `HelltideRevamped\main.lua`) |
+| **`.pack` on disk** | Every `*.pack` file in the `scripts/` root (versioned names included) |
+| **`package.path`** | Plugins already loaded in QQT — including paths ending in `.pack` |
+| **Disk aliases** | Alternate folder names (e.g. `HordeDev-1.3.9` → Infernal Horde catalog key) |
+
+### `.pack` filename → plugin mapping
+
+Pack files often include version suffixes. `core/plugin_catalog.lua` maps basenames to catalog keys:
+
+| Pack basename pattern | Catalog key | Typical role |
+| --------------------- | ----------- | ------------ |
+| `BetterHelltide*` | `BetterHelltide` | Helltide |
+| `Looteer*` | `LooteerV3` | (unmapped helper; shown in scan summary) |
+| `SteroidAlfred*` / `SteroidUtils*` | `BetterAlfred` | Alfred |
+| `HordeDev*` | `Infernal Horde` | Infernal Hordes |
+| Exact names in `pack_aliases` | See `plugin_catalog.lua` | Various |
+
+Exact legacy names (e.g. `BetterHelltide.pack`, `SteroidAlfredV2-1.1.3.pack`) are still probed as a fallback if directory listing is unavailable.
+
+### Files changed for .pack support
+
+| File | Change |
+| ---- | ------ |
+| `core/scripts_scan.lua` | List all `*.pack` in `scripts/` root; track pack file count; improve `get_scripts_root()` via WarPigs `package.path` entry; merge loaded `.pack` paths from `package.path` |
+| `core/plugin_catalog.lua` | Add `pack_aliases`, `disk_folder_aliases`, `pack_filenames_to_probe()`, `resolve_scan_key()`, `installed_scan_hit()` for versioned pack names |
+| `core/plugin_registry.lua` | `BetterHelltide` choice gets `folder = 'BetterHelltide'`; `choice_available()` uses `installed_scan_hit()`; `scan_summary()` includes `pack_count` and `scripts_root` |
+| `gui.lua` | Restore **Scan entries** and **Only show installed plugins**; show scan summary with folder count, pack count, and scripts path; remove auto-scan on menu open |
+| `core/settings.lua` | Persist `plugin_scan_installed_only` from GUI |
+
+### Bug that was fixed
+
+**Symptom:** Scan reported folders correctly (e.g. 12) but **0 .pack** files.
+
+**Root cause:** Early scanner only probed a **fixed list** of exact filenames (`BetterHelltide.pack`, `SteroidAlfredV2-1.1.3.pack`, etc.). Real installs use **versioned names** in the scripts root (`BetterHelltide-v1.7.9.pack`), so `io.open` never found them.
+
+**Fix:** Enumerate every `*.pack` in the scripts root, then map each basename to a catalog key with prefix rules (`^BetterHelltide`, `^Looteer`, etc.).
+
+### Adding a new `.pack` plugin
+
+1. Add or extend a catalog entry in `core/plugin_catalog.lua` (`M.folders` for the role).
+2. Add a prefix rule in `folder_key_for_pack_basename()` if the pack uses a versioned name (e.g. `^MyPlugin` → `MyPlugin`).
+3. Optionally add an exact entry to `M.pack_aliases` for legacy filenames.
+4. Add a registry choice in `core/plugin_registry.lua` with the matching `folder` key.
+5. Click **Scan entries** in-game to refresh the list.
+
+---
+
 
 
 ## Supported plugin folders (auto-discovery)
 
-These folder names under `scripts/` are recognized when the plugin scanner runs (automatically on first open of **Plugin Selection**):
+These folder names under `scripts/` are recognized when you click **Scan entries**:
 
 - `ArkhamAsylum`, `HelltideRevamped`, `BetterHelltide`, `WonderCity-2.0`
 - `Infernal Horde`, `Reaper`
-- `Batmobile`, `Frigate`
+- `Batmobile`, `Frigate`, `NavCore`
 - `rotation_barbarian`, `UniversalRotation`, `Scmurd-Warlock`
 - `BetterAlfred`
+
+**Pack-only plugins** (no unpacked folder) are detected when a matching `*.pack` file sits in the `scripts/` root — see [Plugin scan & .pack files](#plugin-scan--pack-files).
 
 Other folders with `main.lua` may appear if registered in the catalog.
 
@@ -165,7 +238,7 @@ Other folders with `main.lua` may appear if registered in the catalog.
 - Recommended support plugins:
   - **Alfred** (any supported variant) for stash/salvage between activities
   - **Batmobile** or **Frigate** for town navigation
-  - **Universal Rotation** or a class rotation for combat
+  - **Universal Rotation** or a class rotation — enable yourself in QQT; activity bots use it as configured
   - **SilentRaven** (optional) for Tree of Whispers turn-ins
 
 ---
@@ -187,13 +260,21 @@ local st = WarPigsPlugin.status()
 
 ## Changelog
 
+### 2.0.1 (pack scan fix)
 
+- **Scan entries** button restored in Plugin Selection (manual scan only; no auto-scan on menu open)
+- **Only show installed plugins** toggle restored
+- Fix `.pack` detection: enumerate all `*.pack` files in `scripts/` root instead of probing exact legacy filenames
+- Versioned pack names supported (`BetterHelltide-v1.7.9.pack`, `LooteerV3-1.6.1.pack`, etc.) via prefix mapping in `plugin_catalog.lua`
+- Scan summary and console log show pack count and scripts folder path
+- `BetterHelltide` registry choice linked to `folder = 'BetterHelltide'` for post-scan availability
+- Removed **Manage combat rotation** — activity plugins handle their own attacks; WarPigs no longer toggles WW Barb / Universal Rotation
+- Removed combat rotation from Plugin Selection menu
 
 ### 2.0.0
 
 - Simplified menu for end users
 - Removed all dev/debug menu options and quest capture tooling
-- Auto plugin scan on first Plugin Selection open (no manual Refresh button)
 - Session overlay independent of Enable toggle
 - Version bump; no debug files written during normal operation
 

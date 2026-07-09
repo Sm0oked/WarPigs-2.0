@@ -312,7 +312,7 @@ function resolver.stuck_recovery_disable_list()
 end
 
 function resolver.stuck_recovery_clear_target_list()
-    return { 'BatmobilePlugin', 'FrigatePlugin' }
+    return { 'NavCorePlugin', 'BatmobilePlugin', 'FrigatePlugin' }
 end
 
 return resolver

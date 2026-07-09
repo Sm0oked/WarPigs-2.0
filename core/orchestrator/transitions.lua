@@ -346,7 +346,10 @@ function M.process_tick(ctx)
             M.teleport_pending             = false
             M.teleport_incoming_first_seen = nil
             M.teleport_holding_key         = nil
-            if ctx.incoming_is_helltide(wants)
+            if ctx.player_in_undercity and ctx.player_in_undercity() then
+                log('teleport skipped — player already in Undercity dungeon')
+                tt.state = 'IDLE'
+            elseif ctx.incoming_is_helltide(wants)
                 and (ctx.is_plugin_on(ctx.helltide_plugin_name()) or ctx.has_helltide_buff())
             then
                 log('teleport skipped — incoming is helltide and helltide plugin is already running / in helltide zone')
@@ -386,7 +389,11 @@ function M.process_tick(ctx)
     end
 
     if tt.state == 'TO_TEMIS' then
-        if in_temis() then
+        if ctx.player_in_undercity and ctx.player_in_undercity() then
+            log('via-Temis preamble: cancelled — player in Undercity dungeon')
+            tt.state = 'IDLE'
+            M.teleport_pending = false
+        elseif in_temis() then
             if alfred_trigger_now() then
                 tt.state             = 'TEMIS_ALFRED'
                 tt.started_at        = now

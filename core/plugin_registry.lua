@@ -58,6 +58,7 @@ M.roles = {
                 id     = 'better_helltide',
                 label  = 'BetterHelltide',
                 global = 'BetterHelltidePlugin',
+                folder = 'BetterHelltide',
             },
         },
     },
@@ -134,13 +135,19 @@ M.roles = {
     nav = {
         label       = 'Navigation',
         default     = 0,
-        all_globals  = { 'BatmobilePlugin', 'FrigatePlugin' },
-        auto_globals = { 'BatmobilePlugin', 'FrigatePlugin' },
+        all_globals  = { 'NavCorePlugin', 'BatmobilePlugin', 'FrigatePlugin' },
+        auto_globals = { 'NavCorePlugin', 'BatmobilePlugin', 'FrigatePlugin' },
         choices = {
             {
                 id     = 'auto',
-                label  = 'Auto (Batmobile → Frigate)',
+                label  = 'Auto (NavCore → Batmobile → Frigate)',
                 global = nil,
+            },
+            {
+                id     = 'navcore',
+                label  = 'NavCore',
+                global = 'NavCorePlugin',
+                folder = 'NavCore',
             },
             {
                 id     = 'batmobile',
@@ -251,7 +258,7 @@ M.settings_key = {
 
 -- Roles validated in the Plugin Selection menu (in order).
 M.menu_roles = {
-    'pit', 'helltide', 'undercity', 'horde', 'boss', 'nav', 'combat', 'alfred',
+    'pit', 'helltide', 'undercity', 'horde', 'boss', 'nav', 'alfred',
 }
 
 -- Friendly name shown in the compact auto-detect status lines.
@@ -317,6 +324,10 @@ local function choice_available(choice, installed_only, folder_map, scanned)
     if choice.id == 'auto' or choice.id == 'none' then return true end
     if choice.folder then
         if scanned then
+            local catalog = require 'core.plugin_catalog'
+            if catalog.installed_scan_hit(choice.folder, folder_map) then
+                return true
+            end
             return folder_map[choice.folder] ~= nil
         end
         if not installed_only then return true end
@@ -395,6 +406,7 @@ function M.scan_summary()
         return {
             scanned      = false,
             folder_count = 0,
+            pack_count   = 0,
             folders      = {},
             unmapped     = {},
             scripts_root = scan_mod.get_scripts_root(),
@@ -405,6 +417,7 @@ function M.scan_summary()
     return {
         scanned      = true,
         folder_count = scan_mod.folder_count(),
+        pack_count   = scan_mod.pack_count(),
         folders      = scan_mod.all_folders(),
         unmapped     = catalog.unmapped_folders(folder_map),
         scripts_root = scan_mod.get_scripts_root(),

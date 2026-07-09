@@ -3,7 +3,7 @@
 -- would otherwise circular-require and leave a broken cached gui module.
 
 local PLUGIN_LABEL   = 'war_pigs'
-local PLUGIN_VERSION = '2.0.0'
+local PLUGIN_VERSION = '2.0.1'
 
 local settings = {
     plugin_label    = PLUGIN_LABEL,
@@ -29,9 +29,7 @@ local settings = {
     plugin_horde     = 0,
     plugin_boss      = 0,
     plugin_nav       = 0,
-    plugin_combat    = 0,
     plugin_alfred    = 0,
-    manage_combat_rotation = true,
     plugin_scan_installed_only = true,
     plugin_advanced = false,
 }
@@ -81,9 +79,10 @@ settings.update_settings = function()
     settings.plugin_horde     = el.plugin_horde:get()
     settings.plugin_boss      = el.plugin_boss:get()
     settings.plugin_nav       = el.plugin_nav:get()
-    settings.plugin_combat    = el.plugin_combat:get()
     settings.plugin_alfred    = el.plugin_alfred:get()
-    settings.manage_combat_rotation = el.manage_combat_rotation:get()
+    if el.plugin_scan_installed_only then
+        settings.plugin_scan_installed_only = el.plugin_scan_installed_only:get()
+    end
     if el.plugin_advanced then
         settings.plugin_advanced = el.plugin_advanced:get()
     end

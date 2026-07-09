@@ -6,7 +6,6 @@ local alfred_coord   = require 'core.orchestrator.alfred_coordination'
 local session_stats  = require 'core.session_stats'
 local transitions    = require 'core.orchestrator.transitions'
 local navigation     = require 'core.navigation'
-local combat         = require 'core.combat'
 local state_tracker  = require 'core.state_tracker'
 
 local orchestrator = {}
@@ -1101,9 +1100,14 @@ function orchestrator.tick()
             end
         end
         if has_any_plugin_want or has_any_task_match then
-            log('teleport queued — cold start (first activity of session)')
-            transitions.teleport_pending = true
-            transitions.had_active_session = true
+            if in_undercity_zone() then
+                log('teleport skipped — already inside Undercity (mid-run / post-reload)')
+                transitions.had_active_session = true
+            else
+                log('teleport queued — cold start (first activity of session)')
+                transitions.teleport_pending = true
+                transitions.had_active_session = true
+            end
         end
     elseif not transitions.had_active_session
         and (next(wants) ~= nil or next(matches) ~= nil)
@@ -1262,6 +1266,7 @@ function orchestrator.tick()
         incoming_is_helltide  = incoming_is_helltide,
         enemies_near_player   = enemies_near_player,
         helltide_lingering_post_quest = helltide_lingering_post_quest,
+        player_in_undercity       = in_undercity_zone,
     })
     if transition_result == 'limbo' then
         state_tracker.publish({
@@ -1404,11 +1409,13 @@ function orchestrator.tick()
         or transitions.teleport_transition.state ~= 'IDLE'
         or transitions.teleport_pending
 
-    local helltide_managed = false
     local ht_global = orchestrator.helltide_plugin_name()
-    if ht_global and is_plugin_on(ht_global) then
-        helltide_managed = true
-        if not has_helltide_buff() then
+    if ht_global then
+        local ht_handoff = is_plugin_on(ht_global)
+            or wants[ht_global] ~= nil
+            or owned[ht_global] == true
+            or incoming_is_helltide(wants)
+        if ht_handoff and not has_helltide_buff() then
             if not orchestrator._whirlwind_stopped_outside_ht then
                 orchestrator._stop_whirlwind()
                 orchestrator._whirlwind_stopped_outside_ht = true
@@ -1435,15 +1442,9 @@ function orchestrator.tick()
         pit_filler         = pit_filler_active_logged,
         quest_plugin_map   = orchestrator.quest_plugin_map,
         normalize          = normalize,
-        combat_managed     = settings.manage_combat_rotation and questing,
     })
 
-    if helltide_managed then
-        -- HelltideRevamped owns rotation via class_rotation + rotation_gate.
-        combat.tick(false, false)
-    else
-        combat.tick(settings.manage_combat_rotation, questing)
-    end
+    -- Activity plugins own combat rotation; WarPigs only orchestrates handoffs.
 end
 
 -- Tear down when WarPigs is off. release_all on active→inactive transition;
@@ -1486,7 +1487,6 @@ function orchestrator.stand_down()
     last_enabled_reason   = {}
     transitions.reset()
     alfred_coord.reset_session()
-    combat.reset()
     orchestrator._alfred_resume()
     -- Filler-pit state — re-arm only after the next session sees a turn-in.
     turn_in_was_matched      = false

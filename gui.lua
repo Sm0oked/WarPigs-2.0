@@ -1,5 +1,5 @@
 local plugin_label   = 'war_pigs'
-local plugin_version = '2.0.0'
+local plugin_version = '2.0.1'
 console.print('Lua Plugin - WarPigs - v' .. plugin_version)
 
 local registry = require 'core.plugin_registry'
@@ -40,10 +40,10 @@ gui.elements = {
     plugin_horde     = create_plugin_combo('horde'),
     plugin_boss      = create_plugin_combo('boss'),
     plugin_nav       = create_plugin_combo('nav'),
-    plugin_combat    = create_plugin_combo('combat'),
     plugin_alfred    = create_plugin_combo('alfred'),
-    manage_combat_rotation = create_checkbox(true, 'manage_combat_rotation'),
     plugin_advanced        = create_checkbox(false, 'plugin_advanced'),
+    plugin_scan_installed_only = create_checkbox(true, 'plugin_scan_installed_only'),
+    plugin_scan_refresh        = create_checkbox(false, 'plugin_scan_refresh'),
     use_teleport_transition = create_checkbox(false, 'use_teleport_transition'),
     run_pit_after_turnin    = create_checkbox(false, 'run_pit_after_turnin'),
     use_silent_raven        = create_checkbox(false, 'use_silent_raven'),
@@ -67,7 +67,6 @@ local PLUGIN_MENU_HINTS = {
     horde     = 'Infernal Hordes bot for WarPlans horde quests.',
     boss      = 'Boss-run bot for WarPlans boss lair quests.',
     nav       = 'Navigation for WarPigs town walks (Tyrael, crow).\nAuto prefers Batmobile, then Frigate.',
-    combat    = 'Combat rotation while WarPigs is driving a quest.\nAuto picks the rotation that is loaded.',
     alfred    = 'Alfred pack for stash/salvage between activities.',
 }
 
@@ -78,7 +77,6 @@ local PLUGIN_MENU_LABELS = {
     horde     = 'Infernal Hordes',
     boss      = 'Boss lairs',
     nav       = 'Navigation',
-    combat    = 'Combat rotation',
     alfred    = 'Alfred',
 }
 
@@ -96,10 +94,20 @@ end
 
 local function render_plugin_selection()
     local scripts_scan = require 'core.scripts_scan'
-    if not scripts_scan.has_results() then
+
+    gui.elements.plugin_scan_refresh:render('Scan entries',
+        'Scan scripts/ for plugin folders (main.lua) and .pack files.\n' ..
+        'Also reads loaded package.path entries. Runs only when you click this.')
+    if gui.elements.plugin_scan_refresh:get() then
         scripts_scan.refresh()
+        gui.elements.plugin_scan_refresh:set(false)
+        console.print(string.format(
+            '[WarPigs] Plugin scan complete — %d folder(s), %d .pack(s) in %s',
+            scripts_scan.folder_count(), scripts_scan.pack_count(),
+            scripts_scan.get_scripts_root() or '?'))
     end
 
+    local installed_only = gui.elements.plugin_scan_installed_only:get()
     local advanced = gui.elements.plugin_advanced:get()
     if advanced then
         render_menu_header('Manual mode: choose each task plugin below.')
@@ -116,7 +124,7 @@ local function render_plugin_selection()
             or status.choice_id ~= 'auto'
 
         if el and show_combo then
-            gui.role_options[role_id] = registry.choice_labels_live(role_id, true)
+            gui.role_options[role_id] = registry.choice_labels_live(role_id, installed_only)
             el:render(label, gui.role_options[role_id], PLUGIN_MENU_HINTS[role_id] or '')
         elseif status.resolved_loaded then
             render_menu_header(label .. ':  ' .. (status.resolved_label or status.resolved))
@@ -128,6 +136,33 @@ local function render_plugin_selection()
     gui.elements.plugin_advanced:render('Manual plugin selection',
         'Off (default): auto-detect loaded plugins.\n' ..
         'On: show every task dropdown for manual picks.')
+
+    gui.elements.plugin_scan_installed_only:render('Only show installed plugins',
+        'After Scan entries: list choices whose folder exists on disk or .pack is present.\n' ..
+        'Before scan: only plugins currently loaded in QQT are listed.\n' ..
+        'Off shows the full static list.')
+
+    local summary = registry.scan_summary()
+    if summary.scanned then
+        local pack_note = (summary.pack_count or 0) > 0
+            and string.format(', %d .pack(s)', summary.pack_count)
+            or ''
+        render_menu_header(string.format(
+            'Last scan: %s — %d plugin(s)%s',
+            summary.last_scan_at or '?', summary.folder_count, pack_note))
+        if summary.scripts_root and summary.scripts_root ~= '' then
+            render_menu_header('Scripts folder: ' .. summary.scripts_root)
+        end
+        if #summary.unmapped > 0 then
+            local preview = table.concat(summary.unmapped, ', ', 1, math.min(4, #summary.unmapped))
+            if #summary.unmapped > 4 then
+                preview = preview .. ', ...'
+            end
+            render_menu_header('Unmapped plugins: ' .. preview)
+        end
+    else
+        render_menu_header('Plugin scan not run — click Scan entries to detect folders and .pack files')
+    end
 
     for _, warning in ipairs(resolver.validate_all()) do
         render_menu_header('Setup: ' .. warning)
@@ -184,10 +219,6 @@ gui.render = function()
 
     gui.elements.manage_orbwalker:render('Manage orbwalker',
         'Force orbwalker clear ON before each managed plugin starts.')
-
-    gui.elements.manage_combat_rotation:render('Manage combat rotation',
-        'Enable your chosen combat rotation while a WarPlans quest is active.\n' ..
-        'Does not touch rotations while idle in town.')
 
     gui.elements.stuck_recovery:render('Stuck recovery',
         'If movement stalls for several minutes during an activity, disable\n' ..
