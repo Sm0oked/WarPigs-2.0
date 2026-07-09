@@ -121,7 +121,7 @@ local function helltide_active()
 end
 
 -- Predicate: any wanted plugin in `wants_` is the active helltide plugin
--- (BetterHelltide.pack via BetterHelltidePlugin).
+-- Helltide handoff: BetterHelltide.pack exposes HelltideLitePlugin (enable/disable/status).
 local function incoming_is_helltide(wants_)
     for _, entry in pairs(wants_) do
         if orchestrator.helltide_plugin_is(entry.plugin) then return true end
@@ -541,6 +541,9 @@ local function resolve_map_plugin(plugin_field)
     if resolver.is_marker(plugin_field) then
         return resolver.resolve_marker(plugin_field)
     end
+    if resolver.normalize_plugin_global then
+        return resolver.normalize_plugin_global(plugin_field)
+    end
     return plugin_field
 end
 
@@ -620,9 +623,11 @@ end
 local function warn_missing_plugin(plugin_name, pattern)
     if missing_plugin_warned[plugin_name] then return end
     missing_plugin_warned[plugin_name] = true
+    local hint = resolver.missing_enable_hint(plugin_name)
+    local extra = hint and (' — ' .. hint) or ' — load it in QQT Scripts'
     log(string.format(
-        'quest %s needs %s (%s) but that plugin is not loaded — load it in QQT Scripts (WarPigs Plugin Selection)',
-        pattern, plugin_name, role_label_for_plugin(plugin_name)))
+        'quest %s needs %s (%s) but that plugin is not loaded%s',
+        pattern, plugin_name, role_label_for_plugin(plugin_name), extra))
 end
 
 -- Hard filter: only quests containing this substring can drive WarPigs.
@@ -650,6 +655,7 @@ end
 --  — Lua locals aren't hoisted, so a forward reference would resolve to a
 --  global nil at call time.)
 local function is_plugin_on(plugin_name)
+    plugin_name = resolver.normalize_plugin_global(plugin_name)
     local p = _G[plugin_name]
     if not p then return false end
     local status_fn = (type(p.status) == 'function' and p.status)
@@ -707,7 +713,8 @@ local function helltide_lingering_post_quest(wants_)
 end
 
 local function plugin_enable(entry, reason)
-    local p = _G[entry.plugin]
+    local plugin_name = resolver.normalize_plugin_global(entry.plugin)
+    local p = _G[plugin_name]
     if not p then
         warn_missing_plugin(entry.plugin, reason or '?')
         return
@@ -737,29 +744,26 @@ local function plugin_enable(entry, reason)
         log('cannot enable ' .. entry.plugin .. ' — no enable function')
         return
     end
-    managed_by_us[entry.plugin] = true
+    managed_by_us[plugin_name] = true
     if not ok then
-        log('enable() of ' .. entry.plugin .. ' threw: ' .. tostring(err))
+        log('enable() of ' .. plugin_name .. ' threw: ' .. tostring(err))
     end
-    -- Trust the plugin's status() over enable()'s exit path — partial enables
-    -- (HR sets main_toggle, then crashes on missing keybind_toggle, but the
-    -- plugin IS active because main_toggle is what status() reports) should
-    -- count as enabled. Otherwise we'd keep retrying and crashing forever.
-    if is_plugin_on(entry.plugin) then
-        owned[entry.plugin] = true
-        enable_blocked[entry.plugin] = nil
-        enable_fail_logged[entry.plugin] = nil
-        reenable_logged[entry.plugin] = nil
-        last_enabled_reason[entry.plugin] = reason
-        log('enabled ' .. entry.plugin .. ' (' .. (reason or '?') .. ')')
-    elseif not enable_fail_logged[entry.plugin] then
-        log('enable of ' .. entry.plugin .. ' did not result in enabled status — will retry next tick')
-        enable_fail_logged[entry.plugin] = true
+    if is_plugin_on(plugin_name) then
+        owned[plugin_name] = true
+        enable_blocked[plugin_name] = nil
+        enable_fail_logged[plugin_name] = nil
+        reenable_logged[plugin_name] = nil
+        last_enabled_reason[plugin_name] = reason
+        log('enabled ' .. plugin_name .. ' (' .. (reason or '?') .. ')')
+    elseif not enable_fail_logged[plugin_name] then
+        log('enable of ' .. plugin_name .. ' did not result in enabled status — will retry next tick')
+        enable_fail_logged[plugin_name] = true
     end
 end
 
 local function plugin_disable(entry, opts)
-    local p = _G[entry.plugin]
+    local plugin_name = resolver.normalize_plugin_global(entry.plugin)
+    local p = _G[plugin_name]
     local quiet = opts and opts.quiet
     if p then
         if entry.disable then
@@ -770,14 +774,14 @@ local function plugin_disable(entry, opts)
             if not quiet then log('disabled ' .. entry.plugin) end
         end
     end
-    owned[entry.plugin] = nil
-    managed_by_us[entry.plugin] = nil
-    last_disabled_reason = last_enabled_reason[entry.plugin]
-    last_enabled_reason[entry.plugin] = nil
-    last_disable_time[entry.plugin] = get_time_since_inject()
-    last_disabled_plugin = entry.plugin
+    owned[plugin_name] = nil
+    managed_by_us[plugin_name] = nil
+    last_disabled_reason = last_enabled_reason[plugin_name]
+    last_enabled_reason[plugin_name] = nil
+    last_disable_time[plugin_name] = get_time_since_inject()
+    last_disabled_plugin = plugin_name
     last_disabled_at     = get_time_since_inject()
-    session_stats.on_activity_finished(last_disabled_reason, entry.plugin)
+    session_stats.on_activity_finished(last_disabled_reason, plugin_name)
     -- Arm the teleport sequence for the NEXT activity. plugin_disable only
     -- fires after disable_when has satisfied (Reaper: kill+60s, Pit/WC: in
     -- town after Alfred salvage), so we're in a clean state to teleport.

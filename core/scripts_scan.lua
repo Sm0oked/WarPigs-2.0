@@ -1,5 +1,5 @@
 -- Discover plugin folders and .pack files in the scripts/ root.
--- Pack listing uses a one-shot dir /b on "Scan entries" (brief CMD flash on Windows).
+-- Pack listing tries dir /b inside pcall on Scan entries, then io.open probes.
 
 local M = {}
 
@@ -76,14 +76,15 @@ local function join_path(root, name)
     return root .. sep .. name
 end
 
-local function list_pack_files(root)
+local function try_dir_list_packs(root)
     local files, seen = {}, {}
     if not root or root == '' then return files end
 
-    local normalized = root:gsub('/', '\\')
-    local cmd = 'cmd /c dir /b "' .. normalized .. '\\*.pack" 2>nul'
-    local h = io.popen(cmd, 'r')
-    if h then
+    pcall(function()
+        local normalized = root:gsub('/', '\\')
+        local cmd = 'cmd /c dir /b "' .. normalized .. '\\*.pack" 2>nul'
+        local h = io.popen(cmd, 'r')
+        if not h then return end
         for line in h:lines() do
             if line and line ~= '' then
                 local name = line:match('([^\\/]+)$') or line
@@ -95,6 +96,34 @@ local function list_pack_files(root)
             end
         end
         pcall(function() h:close() end)
+    end)
+
+    return files
+end
+
+local function list_pack_files(root, catalog)
+    local files, seen = {}, {}
+    if not root then return files end
+
+    local function add_if_exists(pack_file)
+        if not pack_file or pack_file == '' or seen[pack_file] then return end
+        local full = join_path(root, pack_file)
+        local f = io.open(full, 'r')
+        if f then
+            f:close()
+            seen[pack_file] = true
+            files[#files + 1] = pack_file
+        end
+    end
+
+    for _, pack_file in ipairs(try_dir_list_packs(root)) do
+        add_if_exists(pack_file)
+    end
+
+    if catalog and type(catalog.pack_filenames_to_probe) == 'function' then
+        for _, pack_file in ipairs(catalog.pack_filenames_to_probe()) do
+            add_if_exists(pack_file)
+        end
     end
 
     return files
@@ -112,13 +141,9 @@ local function packs_on_disk(root)
         packs[key] = full
     end
 
-    for _, pack_file in ipairs(list_pack_files(root)) do
+    for _, pack_file in ipairs(list_pack_files(root, catalog)) do
         local full = join_path(root, pack_file)
-        local f = io.open(full, 'r')
-        if f then
-            f:close()
-            note_pack(pack_file, full)
-        end
+        note_pack(pack_file, full)
     end
 
     if #pack_files == 0 and type(catalog.pack_filenames_to_probe) == 'function' then

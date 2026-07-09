@@ -40,8 +40,8 @@ M.roles = {
         marker  = '__helltide__',
         default = 0,
         priority    = 40,
-        all_globals  = { 'HelltideRevampedPlugin', 'BetterHelltidePlugin' },
-        auto_globals = { 'HelltideRevampedPlugin', 'BetterHelltidePlugin' },
+        all_globals  = { 'HelltideLitePlugin', 'HelltideRevampedPlugin', 'BetterHelltidePlugin' },
+        auto_globals = { 'HelltideLitePlugin', 'HelltideRevampedPlugin', 'BetterHelltidePlugin' },
         choices = {
             {
                 id     = 'auto',
@@ -57,7 +57,8 @@ M.roles = {
             {
                 id     = 'better_helltide',
                 label  = 'BetterHelltide',
-                global = 'BetterHelltidePlugin',
+                global = 'HelltideLitePlugin',
+                alt_global = 'BetterHelltidePlugin',
                 folder = 'BetterHelltide',
             },
         },
@@ -101,9 +102,9 @@ M.roles = {
             },
             {
                 id     = 'horde_dev',
-                label  = 'HordeDev',
+                label  = 'Infernal Horde',
                 global = 'InfernalHordesPlugin',
-                folder = 'HordeDev-1.3.9',
+                folder = 'Infernal Horde',
             },
         },
         required_api = { 'enable', 'disable', 'getState' },
@@ -256,6 +257,17 @@ M.settings_key = {
     alfred    = 'plugin_alfred',
 }
 
+-- Stable choice id per role (survives scan/filter changing combo indices).
+M.settings_choice_id_key = {
+    pit       = 'plugin_pit_choice',
+    helltide  = 'plugin_helltide_choice',
+    undercity = 'plugin_undercity_choice',
+    horde     = 'plugin_horde_choice',
+    boss      = 'plugin_boss_choice',
+    nav       = 'plugin_nav_choice',
+    alfred    = 'plugin_alfred_choice',
+}
+
 -- Roles validated in the Plugin Selection menu (in order).
 M.menu_roles = {
     'pit', 'helltide', 'undercity', 'horde', 'boss', 'nav', 'alfred',
@@ -265,6 +277,7 @@ M.menu_roles = {
 M.global_labels = {
     ArkhamAsylumPlugin       = 'Arkham Asylum',
     HelltideRevampedPlugin   = 'HelltideRevamped',
+    HelltideLitePlugin       = 'BetterHelltide',
     BetterHelltidePlugin     = 'BetterHelltide',
     WonderCityPlugin         = 'Wonder City',
     InfernalHordesPlugin     = 'Infernal Horde',
@@ -320,6 +333,16 @@ local function is_global_loaded(name)
     return type(_G[name]) == 'table'
 end
 
+local function pack_path(path)
+    return path and path:lower():match('%.pack$') ~= nil
+end
+
+local function choice_globals_loaded(choice)
+    if choice.global and is_global_loaded(choice.global) then return true end
+    if choice.alt_global and is_global_loaded(choice.alt_global) then return true end
+    return false
+end
+
 local function choice_available(choice, installed_only, folder_map, scanned)
     if choice.id == 'auto' or choice.id == 'none' then return true end
     if choice.folder then
@@ -328,13 +351,15 @@ local function choice_available(choice, installed_only, folder_map, scanned)
             if catalog.installed_scan_hit(choice.folder, folder_map) then
                 return true
             end
-            return folder_map[choice.folder] ~= nil
+            if folder_map[choice.folder] ~= nil then
+                return true
+            end
+            if installed_only then return false end
         end
         if not installed_only then return true end
+        if choice_globals_loaded(choice) then return true end
         if choice.api_global and is_global_loaded(choice.api_global) then return true end
         if choice.alt_api and is_global_loaded(choice.alt_api) then return true end
-        if choice.global and is_global_loaded(choice.global) then return true end
-        if choice.alt_global and is_global_loaded(choice.alt_global) then return true end
         return false
     end
     if installed_only then
@@ -383,15 +408,75 @@ end
 
 function M.choice_labels_live(role_id, installed_only)
     if installed_only == nil then installed_only = true end
+    local scan_mod = require 'core.scripts_scan'
+    local folder_map = scan_mod.has_results() and scan_mod.get_folders() or {}
     local labels = {}
     for i, choice in ipairs(M.get_live_choices(role_id, installed_only)) do
         local label = choice.label
-        if choice.from_scan and choice.folder then
+        if choice.folder and folder_map[choice.folder] then
+            local path = folder_map[choice.folder]
+            if pack_path(path) and not choice_globals_loaded(choice) then
+                local pack_name = path:match('([^\\/]+)$') or 'pack'
+                label = label .. ' [' .. pack_name .. ' — enable in QQT]'
+            elseif choice.from_scan then
+                label = label .. ' [' .. choice.folder .. ']'
+            end
+        elseif choice.from_scan and choice.folder then
             label = label .. ' [' .. choice.folder .. ']'
         end
         labels[i] = label
     end
     return labels
+end
+
+function M.choice_by_id_static(role_id, choice_id)
+    if not choice_id or choice_id == '' then return nil end
+    local role = M.roles[role_id]
+    if not role then return nil end
+    for _, choice in ipairs(role.choices) do
+        if choice.id == choice_id then return choice end
+    end
+    return nil
+end
+
+function M.choice_at_static(role_id, index)
+    local role = M.roles[role_id]
+    if not role then return nil end
+    return role.choices[(index or 0) + 1]
+end
+
+function M.choice_labels_static(role_id)
+    local role = M.roles[role_id]
+    if not role then return {} end
+    local labels = {}
+    for i, choice in ipairs(role.choices) do
+        labels[i] = choice.label
+    end
+    return labels
+end
+
+function M.choice_index_for_id_static(role_id, choice_id)
+    local role = M.roles[role_id]
+    if not role or not choice_id or choice_id == '' then return nil end
+    for i, choice in ipairs(role.choices) do
+        if choice.id == choice_id then return i - 1 end
+    end
+    return nil
+end
+
+function M.choice_by_id(role_id, choice_id, installed_only)
+    if not choice_id or choice_id == '' then return nil end
+    for _, choice in ipairs(M.get_live_choices(role_id, installed_only)) do
+        if choice.id == choice_id then return choice end
+    end
+    return nil
+end
+
+function M.choice_index_for_id(role_id, choice_id, installed_only)
+    for i, choice in ipairs(M.get_live_choices(role_id, installed_only)) do
+        if choice.id == choice_id then return i - 1 end
+    end
+    return nil
 end
 
 function M.choice_at(role_id, index, installed_only)

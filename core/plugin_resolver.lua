@@ -48,8 +48,22 @@ end
 
 function resolver.get_choice(role_id)
     local settings = get_settings()
-    local installed_only = settings.plugin_scan_installed_only ~= false
-    return registry.choice_at(role_id, resolver.get_choice_index(role_id), installed_only)
+    local id_key = registry.settings_choice_id_key
+        and registry.settings_choice_id_key[role_id]
+    if id_key and settings[id_key] then
+        local by_id = registry.choice_by_id_static(role_id, settings[id_key])
+        if by_id then return by_id end
+    end
+    return registry.choice_at_static(role_id, resolver.get_choice_index(role_id))
+end
+
+function resolver.resolve_explicit_global(choice)
+    if not choice or choice.id == 'auto' or choice.id == 'none' then return nil end
+    local primary = choice.api_global or choice.global
+    local alt     = choice.alt_api or choice.alt_global
+    if primary and plugin_table(primary) then return primary end
+    if alt and plugin_table(alt) then return alt end
+    return primary or alt
 end
 
 function resolver.resolve_global(role_id)
@@ -57,24 +71,70 @@ function resolver.resolve_global(role_id)
     if not choice then return nil end
     if choice.id == 'none' then return nil end
 
-    -- Explicit (non-auto) pick: honour the chosen global, preferring an
-    -- alternate global/api when only that variant is currently loaded.
     if choice.id ~= 'auto' then
-        local primary = choice.api_global or choice.global
-        local alt     = choice.alt_api or choice.alt_global
-        if primary and plugin_table(primary) then return primary end
-        if alt and plugin_table(alt) then return alt end
-        return primary or alt
+        return resolver.resolve_explicit_global(choice)
     end
-
-    -- Auto: use the first candidate global that is actually loaded.
     local detected = resolver.auto_detect(role_id)
     if detected then return detected end
 
-    -- Nothing loaded — return the first candidate so validation can name the
-    -- exact plugin the user still needs to enable in QQT.
     local cands = registry.role_candidate_globals(role_id)
+    if role_id == 'helltide' then
+        local ok, scan = pcall(require, 'core.scripts_scan')
+        if ok and type(scan.get_pack_files) == 'function' then
+            for _, pack in ipairs(scan.get_pack_files()) do
+                if pack:match('BetterHelltide') then
+                    return 'HelltideLitePlugin'
+                end
+            end
+        end
+    end
     return cands[1]
+end
+
+function resolver.helltide_lite_plugin()
+    if plugin_table('HelltideLitePlugin') then return plugin_table('HelltideLitePlugin') end
+    return plugin_table('BetterHelltidePlugin')
+end
+
+function resolver.normalize_plugin_global(global_name)
+    if not global_name or global_name == '' then return global_name end
+    if (global_name == 'HelltideLitePlugin' or global_name == 'BetterHelltidePlugin')
+        and plugin_table('HelltideLitePlugin')
+    then
+        return 'HelltideLitePlugin'
+    end
+    return global_name
+end
+
+function resolver.plugin_table_for_global(global_name)
+    global_name = resolver.normalize_plugin_global(global_name)
+    return plugin_table(global_name)
+end
+
+function resolver.missing_enable_hint(global_name)
+    if not global_name or global_name == '' then return nil end
+    local ok, scan = pcall(require, 'core.scripts_scan')
+    if (global_name == 'HelltideLitePlugin' or global_name == 'BetterHelltidePlugin')
+        and ok and type(scan.get_pack_files) == 'function'
+    then
+        for _, pack in ipairs(scan.get_pack_files()) do
+            if pack:match('BetterHelltide') then
+                return 'enable ' .. pack .. ' in QQT Scripts'
+            end
+        end
+    end
+    if global_name == 'InfernalHordesPlugin' and ok and scan.has_folder
+        and scan.has_folder('Infernal Horde')
+    then
+        return 'enable Infernal Horde in QQT Scripts'
+    end
+    if global_name == 'HelltideRevampedPlugin' and ok and scan.has_folder
+        and scan.has_folder('HelltideRevamped')
+    then
+        return 'enable HelltideRevamped in QQT Scripts'
+    end
+    local label = registry.global_label(global_name) or global_name
+    return 'enable ' .. label .. ' in QQT Scripts'
 end
 
 -- Compact status used by the menu: what Auto resolved to, and whether the
@@ -87,6 +147,7 @@ function resolver.status(role_id)
     return {
         role_label      = role and role.label or role_id,
         choice_id       = choice and choice.id or 'auto',
+        choice_label    = choice and choice.label or nil,
         loaded          = loaded,
         loaded_count    = #loaded,
         resolved        = resolved,
@@ -97,7 +158,9 @@ end
 
 function resolver.resolve_marker(marker)
     local role_id = registry.role_for_marker(marker)
-    if role_id then return resolver.resolve_global(role_id) end
+    if role_id then
+        return resolver.normalize_plugin_global(resolver.resolve_global(role_id))
+    end
     return marker
 end
 
@@ -112,6 +175,9 @@ function resolver.get_plugin_instance(role_id)
 end
 
 function resolver.is_loaded(global_name)
+    if global_name == 'HelltideLitePlugin' or global_name == 'BetterHelltidePlugin' then
+        return type(resolver.helltide_lite_plugin()) == 'table'
+    end
     if global_name == 'UNIVERSAL_ROTATION'
         or global_name == 'BARBARIAN_ROTATION'
         or global_name == 'WarlockScmurdPlugin'
@@ -212,7 +278,11 @@ local function validate_standard_role(role_id)
     if choice.id == 'auto' then
         local global = resolver.resolve_global(role_id)
         if not resolver.is_loaded(global) then
-            return false, 'No ' .. role.label:lower() .. ' plugin loaded (' .. global .. ')'
+            local label = role.label:lower()
+            if role_id == 'horde' then
+                return false, 'No infernal hordes plugin loaded (enable Infernal Horde in QQT Scripts)'
+            end
+            return false, 'No ' .. label .. ' plugin loaded (' .. (registry.global_label(global) or global) .. ')'
         end
         return true
     end
@@ -240,7 +310,7 @@ function resolver.validate_role(role_id)
             return true
         end
         if not resolver.auto_detect('helltide') then
-            return false, 'No helltide plugin loaded (enable HelltideRevamped or BetterHelltide)'
+            return false, 'No helltide plugin loaded (enable HelltideRevamped or BetterHelltide pack)'
         end
         return true
     end

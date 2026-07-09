@@ -1,10 +1,11 @@
 local plugin_label   = 'war_pigs'
-local plugin_version = '2.0.1'
+local plugin_version = '2.0.3'
 console.print('Lua Plugin - WarPigs - v' .. plugin_version)
 
 local registry = require 'core.plugin_registry'
 local resolver = require 'core.plugin_resolver'
 local session_stats = require 'core.session_stats'
+local settings = require 'core.settings'
 
 local gui = {}
 
@@ -25,7 +26,7 @@ gui.plugin_version = plugin_version
 
 gui.role_options = {}
 for _, role_id in ipairs(registry.menu_roles) do
-    gui.role_options[role_id] = registry.choice_labels(role_id)
+    gui.role_options[role_id] = registry.choice_labels_static(role_id)
 end
 
 gui.elements = {
@@ -62,7 +63,7 @@ gui.elements = {
 
 local PLUGIN_MENU_HINTS = {
     pit       = 'Pit bot for WarPlans pit quests and optional pit filler.',
-    helltide  = 'Helltide bot for WarPlans helltide quests.\nAuto detects HelltideRevamped or BetterHelltide.',
+    helltide  = 'Helltide bot for WarPlans helltide quests.\nAuto detects HelltideRevamped or BetterHelltide (HelltideLitePlugin).',
     undercity = 'Undercity bot for WarPlans undercity quests.',
     horde     = 'Infernal Hordes bot for WarPlans horde quests.',
     boss      = 'Boss-run bot for WarPlans boss lair quests.',
@@ -92,19 +93,101 @@ function gui.get_overlay_layout()
     }
 end
 
+local function role_show_combo(role_id, advanced, installed_only)
+    if advanced then return true end
+    local status = resolver.status(role_id)
+    if status.loaded_count > 1 then return true end
+    if status.choice_id ~= 'auto' then return true end
+    local scripts_scan = require 'core.scripts_scan'
+    if scripts_scan.has_results() then
+        local choices = registry.get_live_choices(role_id, installed_only)
+        if #choices > 1 then return true end
+    end
+    return false
+end
+
+local combo_id_restored = {}
+
+local function clamp_combo_index(el, label_count)
+    if not el or not label_count or label_count < 1 then return 0 end
+    local ok, idx = pcall(function() return el:get() end)
+    if not ok or type(idx) ~= 'number' then idx = 0 end
+    if idx < 0 or idx >= label_count then
+        idx = 0
+        pcall(function() el:set(0) end)
+    end
+    return idx
+end
+
+local function prepare_combo_index(el, role_id, label_count)
+    if not el or not label_count or label_count < 1 then return 0 end
+
+    -- Restore saved choice id once per session (index drift after scan/reload).
+    if not combo_id_restored[role_id] then
+        combo_id_restored[role_id] = true
+        local id_key = registry.settings_choice_id_key[role_id]
+        if id_key and settings[id_key] and settings[id_key] ~= 'auto' then
+            local from_id = registry.choice_index_for_id_static(role_id, settings[id_key])
+            if from_id ~= nil and from_id >= 0 and from_id < label_count then
+                pcall(function() el:set(from_id) end)
+            end
+        end
+    end
+
+    return clamp_combo_index(el, label_count)
+end
+
+local function sync_combo_settings(role_id, el)
+    local labels = registry.choice_labels_static(role_id)
+    if #labels == 0 then return end
+    local idx = clamp_combo_index(el, #labels)
+    local combo_key = registry.settings_key[role_id]
+    if combo_key then settings[combo_key] = idx end
+    local choice = registry.choice_at_static(role_id, idx)
+    local id_key = registry.settings_choice_id_key[role_id]
+    if id_key and choice then settings[id_key] = choice.id end
+end
+
+local function clamp_all_role_combos()
+    for _, role_id in ipairs(registry.menu_roles) do
+        local el = gui.elements['plugin_' .. role_id]
+        local labels = registry.choice_labels_static(role_id)
+        if el and #labels > 0 then
+            clamp_combo_index(el, #labels)
+        end
+    end
+end
+
+local function render_role_combo(role_id, el, label, hint)
+    local labels = registry.choice_labels_static(role_id)
+    if #labels == 0 then return end
+    prepare_combo_index(el, role_id, #labels)
+    pcall(function()
+        el:render(label, labels, hint or '')
+    end)
+    sync_combo_settings(role_id, el)
+end
+
 local function render_plugin_selection()
     local scripts_scan = require 'core.scripts_scan'
+
+    clamp_all_role_combos()
 
     gui.elements.plugin_scan_refresh:render('Scan entries',
         'Scan scripts/ for plugin folders (main.lua) and .pack files.\n' ..
         'Also reads loaded package.path entries. Runs only when you click this.')
     if gui.elements.plugin_scan_refresh:get() then
-        scripts_scan.refresh()
+        local ok, err = pcall(scripts_scan.refresh)
         gui.elements.plugin_scan_refresh:set(false)
-        console.print(string.format(
-            '[WarPigs] Plugin scan complete — %d folder(s), %d .pack(s) in %s',
-            scripts_scan.folder_count(), scripts_scan.pack_count(),
-            scripts_scan.get_scripts_root() or '?'))
+        clamp_all_role_combos()
+        if ok then
+            console.print(string.format(
+                '[WarPigs] Plugin scan complete — %d folder(s), %d .pack(s) in %s',
+                scripts_scan.folder_count(), scripts_scan.pack_count(),
+                scripts_scan.get_scripts_root() or '?'))
+        else
+            console.print('[WarPigs] Plugin scan failed: ' .. tostring(err))
+        end
     end
 
     local installed_only = gui.elements.plugin_scan_installed_only:get()
@@ -119,17 +202,19 @@ local function render_plugin_selection()
         local status = resolver.status(role_id)
         local el     = gui.elements['plugin_' .. role_id]
         local label  = PLUGIN_MENU_LABELS[role_id] or role_id
-        local show_combo = advanced
-            or status.loaded_count > 1
-            or status.choice_id ~= 'auto'
+        local show_combo = role_show_combo(role_id, advanced, installed_only)
 
         if el and show_combo then
-            gui.role_options[role_id] = registry.choice_labels_live(role_id, installed_only)
-            el:render(label, gui.role_options[role_id], PLUGIN_MENU_HINTS[role_id] or '')
+            render_role_combo(role_id, el, label, PLUGIN_MENU_HINTS[role_id] or '')
         elseif status.resolved_loaded then
             render_menu_header(label .. ':  ' .. (status.resolved_label or status.resolved))
         elseif status.resolved then
-            render_menu_header(label .. ':  ' .. (status.resolved_label or status.resolved) .. ' — not loaded')
+            local note = ' — not loaded'
+            if role_id == 'helltide' and not status.resolved_loaded then
+                local hint = resolver.missing_enable_hint(status.resolved)
+                if hint and hint ~= '' then note = ' — ' .. hint end
+            end
+            render_menu_header(label .. ':  ' .. (status.resolved_label or status.resolved) .. note)
         end
     end
 
@@ -152,6 +237,11 @@ local function render_plugin_selection()
             summary.last_scan_at or '?', summary.folder_count, pack_note))
         if summary.scripts_root and summary.scripts_root ~= '' then
             render_menu_header('Scripts folder: ' .. summary.scripts_root)
+        end
+        local scripts_scan = require 'core.scripts_scan'
+        if scripts_scan.pack_count() > 0 then
+            local packs = table.concat(scripts_scan.get_pack_files(), ', ')
+            render_menu_header('Packs found: ' .. packs)
         end
         if #summary.unmapped > 0 then
             local preview = table.concat(summary.unmapped, ', ', 1, math.min(4, #summary.unmapped))

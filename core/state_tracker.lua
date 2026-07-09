@@ -112,8 +112,17 @@ local function derive_phase(ctx, task, missing, blocked)
         return M.PHASE.TASK, task.label .. ' [' .. task.state .. ']'
     end
     if #missing > 0 then
-        return M.PHASE.MISSING_PLUGIN,
-            missing[1].label .. ' needs ' .. missing[1].plugin
+        local m = missing[1]
+        local hint
+        local ok, resolver = pcall(require, 'core.plugin_resolver')
+        if ok and type(resolver.missing_enable_hint) == 'function' then
+            hint = resolver.missing_enable_hint(m.plugin)
+        end
+        local detail = m.label .. ' needs ' .. m.plugin
+        if hint and hint ~= '' then
+            detail = detail .. ' — ' .. hint
+        end
+        return M.PHASE.MISSING_PLUGIN, detail
     end
     local tt = ctx.transition_state or 'IDLE'
     if tt ~= 'IDLE' or ctx.teleport_pending then

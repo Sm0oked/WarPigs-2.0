@@ -1,6 +1,6 @@
 # WarPigs Orchestrator
 
-**Version 2.0.1** — WarPlans quest orchestrator for Diablo IV (QQT scripts).
+**Version 2.0.3** — WarPlans quest orchestrator for Diablo IV (QQT scripts).
 
 WarPigs watches your active WarPlans quests and automatically enables the right activity plugins (pit, helltide, undercity, hordes, boss lairs), handles town transitions (Alfred, SilentRaven, teleport). Each activity bot handles its own combat rotation.
 
@@ -18,7 +18,7 @@ Each WarPlans activity type maps to a **role**. WarPigs resolves that role to a 
 | Role                   | Typical plugins                                   | Global API                                                        |
 | ---------------------- | ------------------------------------------------- | ----------------------------------------------------------------- |
 | **Pit**                | Arkham Asylum                                     | `ArkhamAsylumPlugin`                                              |
-| **Helltide**           | HelltideRevamped, BetterHelltide                  | `HelltideRevampedPlugin`, `BetterHelltidePlugin`                  |
+| **Helltide**           | HelltideRevamped, BetterHelltide                  | `HelltideRevampedPlugin`, `HelltideLitePlugin` (BetterHelltide pack) |
 | **Undercity**          | Wonder City                                       | `WonderCityPlugin`                                                |
 | **Infernal Hordes**    | Infernal Horde                                    | `InfernalHordesPlugin`                                            |
 | **Boss lairs**         | Reaper                                            | `ReaperPlugin`                                                    |
@@ -28,7 +28,7 @@ Each WarPlans activity type maps to a **role**. WarPigs resolves that role to a 
 
 Quest entries in `core/orchestrator.lua` use **role markers** (e.g. `__helltide__`, `__pit__`) instead of fixed plugin names. The resolver turns those markers into whatever plugin you (or Auto) selected.
 
-**Example:** Switching helltide bots is a dropdown under **Plugin Selection → Helltide** when both HelltideRevamped and BetterHelltide are installed.
+**Example:** Switching helltide bots is a dropdown under **Plugin Selection → Helltide** when both HelltideRevamped and BetterHelltide are installed. Pick **BetterHelltide** explicitly to use the pack (`HelltideLitePlugin`); Auto prefers BetterHelltide when that global is loaded.
 
 ### 2. Auto-detect (default)
 
@@ -54,7 +54,7 @@ Optional on-screen panel (position, opacity, font size). Works **independently**
 
 
 
-## Menu guide (v2.0.1)
+## Menu guide (v2.0.3)
 
 Open: **Z | War Pigs | Orchestrator**
 
@@ -67,8 +67,8 @@ Open: **Z | War Pigs | Orchestrator**
 
 ### Plugin Selection
 
-- **Scan entries** — Manually scan `scripts/` for plugin folders and `.pack` files (see [Plugin scan & .pack files](#plugin-scan--pack-files) below).
-- **Only show installed plugins** — After a scan, hide choices that are not on disk / not loaded.
+- **Scan entries** — Manually scan `scripts/` for plugin folders and `.pack` files (see [Plugin scan & .pack files](#plugin-scan--pack-files) below). Scan is wrapped in `pcall` so a failed scan will not crash the game.
+- **Only show installed plugins** — After a scan, filter which choices count as “installed” for status lines and auto-detect hints. Dropdown option lists stay **fixed** (never shrink) to avoid QQT combo crashes.
 - Auto status lines per task, or dropdowns when ambiguous / manual mode is on.
 - **Manual plugin selection** — Show all task dropdowns.
 - **Setup** warnings if a required plugin is not loaded.
@@ -157,7 +157,7 @@ WarPigs must discover these so **Only show installed plugins** and manual dropdo
    `[WarPigs] Plugin scan complete — 12 folder(s), 3 .pack(s) in c:\diablo_qqt\scripts`
 4. The menu also shows **Scripts folder:** so you can confirm the correct root is used.
 
-On Windows, listing `.pack` files uses a one-shot `dir /b *.pack` via `io.popen` when you click **Scan entries**. This may cause a brief CMD flash (same pattern as Universal Rotation profile discovery).
+On Windows, listing `.pack` files uses a one-shot `dir /b *.pack` via `io.popen` **inside `pcall`** when you click **Scan entries**. If directory listing fails, the scanner falls back to probing known pack filenames with `io.open`. This may cause a brief CMD flash on success (same pattern as Universal Rotation profile discovery).
 
 ### What the scanner checks
 
@@ -188,9 +188,9 @@ Exact legacy names (e.g. `BetterHelltide.pack`, `SteroidAlfredV2-1.1.3.pack`) ar
 | ---- | ------ |
 | `core/scripts_scan.lua` | List all `*.pack` in `scripts/` root; track pack file count; improve `get_scripts_root()` via WarPigs `package.path` entry; merge loaded `.pack` paths from `package.path` |
 | `core/plugin_catalog.lua` | Add `pack_aliases`, `disk_folder_aliases`, `pack_filenames_to_probe()`, `resolve_scan_key()`, `installed_scan_hit()` for versioned pack names |
-| `core/plugin_registry.lua` | `BetterHelltide` choice gets `folder = 'BetterHelltide'`; `choice_available()` uses `installed_scan_hit()`; `scan_summary()` includes `pack_count` and `scripts_root` |
-| `gui.lua` | Restore **Scan entries** and **Only show installed plugins**; show scan summary with folder count, pack count, and scripts path; remove auto-scan on menu open |
-| `core/settings.lua` | Persist `plugin_scan_installed_only` from GUI |
+| `core/plugin_registry.lua` | `BetterHelltide` choice uses `HelltideLitePlugin`; static choice helpers; stable choice IDs per role |
+| `gui.lua` | Restore **Scan entries** and **Only show installed plugins**; static combo labels (crash-safe); clamp combo indices; sync selection after render; show scan summary with folder count, pack count, and scripts path; remove auto-scan on menu open |
+| `core/settings.lua` | Persist `plugin_scan_installed_only` and per-role `plugin_*_choice` stable IDs from GUI |
 
 ### Bug that was fixed
 
@@ -235,6 +235,7 @@ Other folders with `main.lua` may appear if registered in the catalog.
 - **QQT** with Lua script injection
 - **WarPlans** quests active on the character
 - Per-activity plugins installed and **enabled in QQT Scripts** for the content you run
+- **BetterHelltide:** enable `BetterHelltide-*.pack` in QQT Scripts; for explicit pack use, disable the open-source `HelltideRevamped` folder if both are present
 - Recommended support plugins:
   - **Alfred** (any supported variant) for stash/salvage between activities
   - **Batmobile** or **Frigate** for town navigation
@@ -259,6 +260,24 @@ local st = WarPigsPlugin.status()
 
 
 ## Changelog
+
+### 2.0.3 (dropdown selection fix)
+
+- Fix Helltide (and other role) dropdowns snapping back to **Auto** after picking a plugin — selection is read **after** render, not forced from saved state every frame
+- One-time restore of saved choice ID per session (e.g. `better_helltide`) on reload; bounds clamping still runs every frame for crash safety
+
+### 2.0.2 (combo crash fix)
+
+- Fix game crash when opening Plugin Selection, scanning, or changing dropdowns after a scan
+- **Root cause:** QQT `combo_box` crashes when the option list shrinks while a persisted index points past the end
+- Dropdowns now use a **static label list** that never shrinks after scan or “installed only” filtering
+- Combo indices are **clamped** before render; stable **choice IDs** (`plugin_helltide_choice`, etc.) survive scan/filter without breaking resolution
+- Plugin scan wrapped in `pcall`; `dir /b` for packs also inside `pcall` with `io.open` probe fallback
+- Resolver uses `choice_by_id_static` — no silent fallback to HelltideRevamped when BetterHelltide is explicitly selected
+- BetterHelltide pack API: primary global is **`HelltideLitePlugin`** (`enable` / `disable` / `status`)
+- Infernal Hordes catalog folder key fixed to **`Infernal Horde`** (was `HordeDev-1.3.9`)
+- Auto-detect order: `HelltideLitePlugin` before `HelltideRevampedPlugin`
+- Removed registry sync from `settings.update_settings()` every tick (lighter, avoids edge-case require churn)
 
 ### 2.0.1 (pack scan fix)
 

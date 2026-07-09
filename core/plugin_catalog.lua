@@ -12,7 +12,11 @@ M.folders = {
         helltide = { global = 'HelltideRevampedPlugin', label = 'HelltideRevamped' },
     },
     BetterHelltide = {
-        helltide = { global = 'BetterHelltidePlugin', label = 'BetterHelltide' },
+        helltide = {
+            global     = 'HelltideLitePlugin',
+            alt_global = 'BetterHelltidePlugin',
+            label      = 'BetterHelltide',
+        },
     },
     ['WonderCity-2.0'] = {
         undercity = { global = 'WonderCityPlugin', label = 'Wonder City' },

@@ -3,7 +3,7 @@
 -- would otherwise circular-require and leave a broken cached gui module.
 
 local PLUGIN_LABEL   = 'war_pigs'
-local PLUGIN_VERSION = '2.0.1'
+local PLUGIN_VERSION = '2.0.3'
 
 local settings = {
     plugin_label    = PLUGIN_LABEL,
@@ -24,12 +24,19 @@ local settings = {
     stats_overlay_font_size = 17,
     -- Plugin selection (combo_box index, 0-based).
     plugin_pit       = 0,
+    plugin_pit_choice = 'auto',
     plugin_helltide  = 0,
+    plugin_helltide_choice = 'auto',
     plugin_undercity = 0,
+    plugin_undercity_choice = 'auto',
     plugin_horde     = 0,
+    plugin_horde_choice = 'auto',
     plugin_boss      = 0,
+    plugin_boss_choice = 'auto',
     plugin_nav       = 0,
+    plugin_nav_choice = 'auto',
     plugin_alfred    = 0,
+    plugin_alfred_choice = 'auto',
     plugin_scan_installed_only = true,
     plugin_advanced = false,
 }
