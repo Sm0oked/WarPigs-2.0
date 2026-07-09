@@ -17,9 +17,6 @@ M.folders = {
     ['WonderCity-2.0'] = {
         undercity = { global = 'WonderCityPlugin', label = 'Wonder City' },
     },
-    NightmareCity = {
-        nmd = { global = 'NightmareCityPlugin', label = 'NightmareCity' },
-    },
     ['Infernal Horde'] = {
         horde = { global = 'InfernalHordesPlugin', label = 'Infernal Horde' },
     },

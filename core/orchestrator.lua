@@ -34,6 +34,7 @@ alfred_coord.install_on(orchestrator)
 orchestrator._stop_whirlwind = function ()
     navigation.stop_whirlwind_for_teleport('warpigs')
 end
+orchestrator._whirlwind_stopped_outside_ht = false
 
 -- ── transition sequencer ────────────────────────────────────────────────────
 -- Goal: never have two activity plugins running at once and never start the
@@ -143,36 +144,6 @@ local function in_undercity_zone()
     local ok2, zname = pcall(function() return w:get_current_zone_name() end)
     if not ok2 or type(zname) ~= 'string' then return false end
     return zname:match('X1_Undercity_') ~= nil
-end
-
--- Predicate: inside a nightmare dungeon zone (dgn_* prefix). Mirrors
--- NightmareCity's utils.player_in_nmd for mid-run arrived_when.
-local NMD_ZONE_PATTERNS = {
-    'dgn_hawe_', 'dgn_kehj_', 'dgn_scos_', 'dgn_frac_', 'dgn_step_', 'dgn_nah', 'dgn_skov_', 'dgn_sko_', 'dgn_',
-}
-local function in_nmd_zone()
-    local ok, w = pcall(function() return get_current_world() end)
-    if not ok or w == nil then return false end
-    local ok2, zname = pcall(function() return w:get_current_zone_name() end)
-    if not ok2 or type(zname) ~= 'string' then return false end
-    local lower = zname:lower()
-    for _, pat in ipairs(NMD_ZONE_PATTERNS) do
-        if lower:find(pat, 1, true) then return true end
-    end
-    return false
-end
-
-local function in_nmd_town_ready()
-    if in_nmd_zone() then return true end
-    local skins = {
-        'TWN_Skov_Temis_Dungeon_Obelisk',
-        'TWN_Skov_Temis_Nightmare_Obelisk',
-        'TWN_Kehj_IronWolves_PitKey_Crafter',
-    }
-    for _, skin in ipairs(skins) do
-        if actor_present(skin) then return true end
-    end
-    return false
 end
 
 -- Predicate: are there live enemies close enough that the teleport channel
@@ -377,14 +348,6 @@ orchestrator.quest_plugin_map = {
             return actor_present('Aubrie_Test_Undercity_Crafter')
                 or in_undercity_zone()
         end,
-    },
-
-    -- Substring covers WarPlans_QST_Nightmare*, WarPlans_QST_NightmareDungeons, etc.
-    -- Enable Log ALL quests in WarPigs if the exact key differs this season.
-    WarPlans_QST_Nightmare = {
-        plugin       = registry.ROLE_MARKERS.nmd,
-        disable_when = in_town_disable_when,
-        arrived_when = in_nmd_town_ready,
     },
 
     -- Confirmed seen in logs as WarPlans_QST_InfernalHordes_BSK; substring
@@ -607,7 +570,9 @@ local last_matches   = {}  -- pattern -> true (for verbose log only)
 local pending_disable = {} -- plugin_name -> true (disable deferred by predicate)
 local pending_disable_since = {}  -- plugin_name -> time when deferral started (for MAX_DISABLE_DEFER_SECONDS)
 local last_disable_time     = {}  -- plugin_name -> time the disable actually fired (for TRANSITION_GAP_SECONDS gate)
-local enable_blocked        = {}  -- plugin_name -> last gate-reason logged (suppresses repeat logs)
+local enable_blocked        = {}  -- plugin_name -> stable gate key (suppresses repeat logs)
+local enable_fail_logged    = {}  -- plugin_name -> true (enable retry failure logged once)
+local reenable_logged       = {}  -- plugin_name -> true (dropout re-enable logged once)
 local missing_plugin_warned = {}  -- plugin_name -> true (log once per session)
 local was_off        = {}  -- plugin_name -> true (we believe it is currently off; suppresses repeated logs)
 -- Same-activity continuation: when the same plugin re-matches within this
@@ -628,6 +593,16 @@ local last_enabled_reason   = {}  -- plugin_name -> pattern
 
 local function log(msg)
     console.print('[WarPigs] ' .. msg)
+end
+
+-- Gate reasons with live countdowns change every tick; compare stable keys only.
+local function stable_gate_key(reason)
+    if not reason then return nil end
+    local plugin = reason:match('^post%-disable cooldown: ([^%(]+)')
+    if plugin then
+        return 'post-disable cooldown: ' .. plugin:gsub('%s+$', '')
+    end
+    return reason
 end
 
 local function role_label_for_plugin(plugin_name)
@@ -774,22 +749,26 @@ local function plugin_enable(entry, reason)
     if is_plugin_on(entry.plugin) then
         owned[entry.plugin] = true
         enable_blocked[entry.plugin] = nil
+        enable_fail_logged[entry.plugin] = nil
+        reenable_logged[entry.plugin] = nil
         last_enabled_reason[entry.plugin] = reason
         log('enabled ' .. entry.plugin .. ' (' .. (reason or '?') .. ')')
-    else
+    elseif not enable_fail_logged[entry.plugin] then
         log('enable of ' .. entry.plugin .. ' did not result in enabled status — will retry next tick')
+        enable_fail_logged[entry.plugin] = true
     end
 end
 
 local function plugin_disable(entry, opts)
     local p = _G[entry.plugin]
+    local quiet = opts and opts.quiet
     if p then
         if entry.disable then
             entry.disable(p)
-            log('disabled ' .. entry.plugin)
+            if not quiet then log('disabled ' .. entry.plugin) end
         elseif type(p.disable) == 'function' then
             p.disable()
-            log('disabled ' .. entry.plugin)
+            if not quiet then log('disabled ' .. entry.plugin) end
         end
     end
     owned[entry.plugin] = nil
@@ -1086,7 +1065,7 @@ function orchestrator.tick()
                 if transitions.teleport_pending then
                     transitions.teleport_pending             = false
                     transitions.teleport_incoming_first_seen = nil
-                    transitions.teleport_holding_logged      = false
+                    transitions.teleport_holding_key         = nil
                 end
                 if not pit_filler_active_logged then
                     log('pit filler engaged — no WarPlans quest active, enabling ' ..
@@ -1191,12 +1170,17 @@ function orchestrator.tick()
                     was_off[plugin_name] = true
                 end
             elseif active_warplan then
-                local target_name = next(wants)
-                log(string.format(
-                    'disabling %s — not wanted (active target: %s)',
-                    plugin_name, tostring(target_name)))
-                plugin_disable(entry)
-                was_off[plugin_name] = true
+                if is_plugin_on(plugin_name) then
+                    local first_attempt = not was_off[plugin_name]
+                    if first_attempt then
+                        local target_name = next(wants)
+                        log(string.format(
+                            'disabling %s — not wanted (active target: %s)',
+                            plugin_name, tostring(target_name)))
+                    end
+                    plugin_disable(entry, { quiet = not first_attempt })
+                    was_off[plugin_name] = true
+                end
             elseif pending_disable[plugin_name] then
                 pending_disable[plugin_name]       = nil
                 pending_disable_since[plugin_name] = nil
@@ -1253,7 +1237,8 @@ function orchestrator.tick()
                 last_disabled_plugin, tostring(last_disabled_reason), now - last_disabled_at))
             transitions.teleport_pending             = false
             transitions.teleport_incoming_first_seen = nil
-            transitions.teleport_holding_logged      = false
+            transitions.teleport_holding_key         = nil
+            transitions.teleport_rearm_logged        = false
             last_disabled_plugin         = nil
             last_disabled_reason         = nil
         end
@@ -1353,9 +1338,10 @@ function orchestrator.tick()
                 end
             end
             if gate_reason then
-                if enable_blocked[plugin_name] ~= gate_reason then
+                local gate_key = stable_gate_key(gate_reason)
+                if enable_blocked[plugin_name] ~= gate_key then
                     log('deferring enable of ' .. plugin_name .. ' — ' .. gate_reason)
-                    enable_blocked[plugin_name] = gate_reason
+                    enable_blocked[plugin_name] = gate_key
                 end
             elseif entry_gate_reason then
                 if enable_blocked[plugin_name] ~= entry_gate_reason then
@@ -1370,7 +1356,10 @@ function orchestrator.tick()
                     and not transitions.teleport_pending
                     and transitions.teleport_transition.state == 'IDLE'
                 then
-                    log('re-arming teleport_pending — enable_gate denied with state IDLE')
+                    if not transitions.teleport_rearm_logged then
+                        log('re-arming teleport_pending — enable_gate denied with state IDLE')
+                        transitions.teleport_rearm_logged = true
+                    end
                     transitions.teleport_pending = true
                 end
             else
@@ -1380,7 +1369,10 @@ function orchestrator.tick()
                     pending_disable[plugin_name]       = nil
                     pending_disable_since[plugin_name] = nil
                 elseif dropped_out then
-                    log('re-enabling ' .. plugin_name .. ' — plugin dropped off unexpectedly')
+                    if not reenable_logged[plugin_name] then
+                        log('re-enabling ' .. plugin_name .. ' — plugin dropped off unexpectedly')
+                        reenable_logged[plugin_name] = true
+                    end
                 end
                 disable_role_siblings(plugin_name)
                 plugin_enable(entry, reason)
@@ -1412,6 +1404,20 @@ function orchestrator.tick()
         or transitions.teleport_transition.state ~= 'IDLE'
         or transitions.teleport_pending
 
+    local helltide_managed = false
+    local ht_global = orchestrator.helltide_plugin_name()
+    if ht_global and is_plugin_on(ht_global) then
+        helltide_managed = true
+        if not has_helltide_buff() then
+            if not orchestrator._whirlwind_stopped_outside_ht then
+                orchestrator._stop_whirlwind()
+                orchestrator._whirlwind_stopped_outside_ht = true
+            end
+        else
+            orchestrator._whirlwind_stopped_outside_ht = false
+        end
+    end
+
     state_tracker.publish({
         now                = now,
         warpigs_on         = settings.is_active(),
@@ -1432,7 +1438,12 @@ function orchestrator.tick()
         combat_managed     = settings.manage_combat_rotation and questing,
     })
 
-    combat.tick(settings.manage_combat_rotation, questing)
+    if helltide_managed then
+        -- HelltideRevamped owns rotation via class_rotation + rotation_gate.
+        combat.tick(false, false)
+    else
+        combat.tick(settings.manage_combat_rotation, questing)
+    end
 end
 
 -- Tear down when WarPigs is off. release_all on active→inactive transition;
@@ -1470,6 +1481,8 @@ function orchestrator.stand_down()
     pending_disable_since = {}
     last_disable_time     = {}
     enable_blocked        = {}
+    enable_fail_logged    = {}
+    reenable_logged       = {}
     last_enabled_reason   = {}
     transitions.reset()
     alfred_coord.reset_session()

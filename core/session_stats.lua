@@ -13,7 +13,6 @@ local session = {
     horde         = 0,
     pit           = 0,
     undercity     = 0,
-    nmd           = 0,
     other         = 0,
     last_activity = nil,
     last_round_at = nil,
@@ -51,7 +50,6 @@ local function classify_reason(reason)
     if reason:find('InfernalHordes', 1, true) then return 'horde' end
     if reason:find('ThePit', 1, true) then return 'pit' end
     if reason:find('Undercity', 1, true) then return 'undercity' end
-    if reason:find('Nightmare', 1, true) then return 'nmd' end
     if reason:find('WarPlans', 1, true) then return 'other' end
     return nil
 end
@@ -88,13 +86,12 @@ local function write_file()
         string.format('  Hordes:   %d', session.horde),
         string.format('  Pit:      %d', session.pit),
         string.format('  Undercity:%d', session.undercity),
-        string.format('  NMD:      %d', session.nmd),
     }
     if session.other > 0 then
         lines[#lines + 1] = string.format('  Other:    %d', session.other)
     end
     local total = session.helltide + session.boss + session.horde
-        + session.pit + session.undercity + session.nmd + session.other
+        + session.pit + session.undercity + session.other
     lines[#lines + 1] = ''
     lines[#lines + 1] = 'Total activities: ' .. tostring(total)
     if session.last_activity then
@@ -142,7 +139,7 @@ end
 function M.get_snapshot()
     ensure_session()
     local total = session.helltide + session.boss + session.horde
-        + session.pit + session.undercity + session.nmd + session.other
+        + session.pit + session.undercity + session.other
     return {
         session_start = session.session_start,
         rounds        = session.rounds,
@@ -151,7 +148,6 @@ function M.get_snapshot()
         horde         = session.horde,
         pit           = session.pit,
         undercity     = session.undercity,
-        nmd           = session.nmd,
         other         = session.other,
         total         = total,
         last_activity = session.last_activity,
@@ -167,7 +163,6 @@ function M.reset()
     session.horde         = 0
     session.pit           = 0
     session.undercity     = 0
-    session.nmd           = 0
     session.other         = 0
     session.last_activity = nil
     session.last_round_at = nil
@@ -237,12 +232,6 @@ function M.render(gui_ref)
         string.format('Pit:      %d', s.pit),
         COL.text(), font,
     }
-    if s.nmd > 0 then
-        lines[#lines + 1] = {
-            string.format('NMD: %d', s.nmd),
-            COL.text_dim(), math.max(10, font - 1),
-        }
-    end
     lines[#lines + 1] = {
         string.format('Total: %d', s.total),
         COL.text(), font,

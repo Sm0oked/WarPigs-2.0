@@ -137,7 +137,16 @@ local function apply_target(target_api, choice_id)
 end
 
 -- Enforce the menu combat pick while WarPigs is actively questing.
-function M.tick(manage_enabled, questing)
+function M.tick(manage_enabled, questing, opts)
+    opts = opts or {}
+    if opts.pause_for_helltide_search then
+        local target = last_applied_target
+        if target and rotation_enabled(api_table(target)) then
+            rotation_set(api_table(target), false)
+        end
+        return
+    end
+
     if not manage_enabled or not questing then
         last_applied_target = nil
         last_applied_choice = nil

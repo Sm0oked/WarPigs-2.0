@@ -89,6 +89,7 @@ M.teleport_transition = {
     alfred_fired_at   = nil,
     alfred_was_busy   = false,
     settle_started_at = nil,
+    settle_rearm_logged   = false,
     helltide_hold_logged  = false,
     silent_raven_fired_at = nil,
     silent_raven_result   = nil,
@@ -97,9 +98,18 @@ M.teleport_transition = {
 
 M.teleport_pending             = false
 M.teleport_incoming_first_seen = nil
-M.teleport_holding_logged      = false
+M.teleport_holding_key         = nil   -- stable dedup key (reason strings with countdowns change every tick)
+M.teleport_limbo_logged        = false
+M.teleport_rearm_logged        = false
 M.temis_hold_for_chest_logged  = nil
 M.had_active_session           = false
+
+-- Holding reasons that embed live countdowns must not be used as log dedup keys.
+local function teleport_holding_key(reason)
+    if reason:find('settling incoming', 1, true) then return 'settling_incoming' end
+    if reason:find('reaper watchdog post%-disable hold', 1, true) then return 'reaper_watchdog_hold' end
+    return reason
+end
 
 local function crow_walk(action, started_at, now)
     if action == 'clear' then
@@ -144,7 +154,9 @@ function M.reset()
     town_mutex_mode                = 'idle'
     M.teleport_pending             = false
     M.teleport_incoming_first_seen = nil
-    M.teleport_holding_logged      = false
+    M.teleport_holding_key         = nil
+    M.teleport_limbo_logged        = false
+    M.teleport_rearm_logged        = false
     M.temis_hold_for_chest_logged  = nil
     M.had_active_session           = false
     local tt = M.teleport_transition
@@ -156,6 +168,7 @@ function M.reset()
     tt.alfred_fired_at   = nil
     tt.alfred_was_busy   = false
     tt.settle_started_at = nil
+    tt.settle_rearm_logged   = false
     tt.helltide_hold_logged  = false
     tt.silent_raven_fired_at = nil
     tt.silent_raven_result   = nil
@@ -175,6 +188,7 @@ function M.abort_on_death(log_fn)
         M.teleport_transition.alfred_fired_at   = nil
         M.teleport_transition.alfred_was_busy   = false
         M.teleport_transition.settle_started_at = nil
+        M.teleport_transition.settle_rearm_logged   = false
         M.teleport_transition.helltide_hold_logged  = false
         M.teleport_transition.silent_raven_fired_at = nil
         M.teleport_transition.silent_raven_result   = nil
@@ -182,7 +196,9 @@ function M.abort_on_death(log_fn)
         raven_coord.reset_session()
         M.teleport_pending = true
         M.teleport_incoming_first_seen = nil
-        M.teleport_holding_logged      = false
+        M.teleport_holding_key         = nil
+        M.teleport_limbo_logged        = false
+        M.teleport_rearm_logged        = false
     end
 end
 
@@ -223,6 +239,11 @@ function M.process_tick(ctx)
     end)
 
     local function start_warplan_teleport(wants_, now_)
+        if ctx.incoming_is_helltide(wants_) then
+            log('teleport skipped — incoming is helltide; HelltideRevamped search_helltide handles zone navigation')
+            tt.state = 'IDLE'
+            return
+        end
         local task_only_incoming = next(wants_) == nil
         local already_arrived = false
         for _, entry in pairs(wants_) do
@@ -240,6 +261,7 @@ function M.process_tick(ctx)
         else
             tt.state      = 'TELEPORTING'
             tt.started_at = now_
+            M.teleport_limbo_logged = false
             if _G.warplan and type(warplan.teleport_to_activity) == 'function' then
                 local snap_w = get_current_world()
                 tt.snap_world = snap_w and snap_w:get_name()
@@ -315,14 +337,15 @@ function M.process_tick(ctx)
                 local left = TELEPORT_INCOMING_SETTLE - (now - M.teleport_incoming_first_seen)
                 reason = string.format('settling incoming (%.1fs left)', left)
             end
-            if M.teleport_holding_logged ~= reason then
+            local hold_key = teleport_holding_key(reason)
+            if M.teleport_holding_key ~= hold_key then
                 log('teleport holding — ' .. reason)
-                M.teleport_holding_logged = reason
+                M.teleport_holding_key = hold_key
             end
         else
             M.teleport_pending             = false
             M.teleport_incoming_first_seen = nil
-            M.teleport_holding_logged      = false
+            M.teleport_holding_key         = nil
             if ctx.incoming_is_helltide(wants)
                 and (ctx.is_plugin_on(ctx.helltide_plugin_name()) or ctx.has_helltide_buff())
             then
@@ -507,8 +530,9 @@ function M.process_tick(ctx)
                 'via-Temis preamble: Alfred max wait (%.0fs) exceeded — proceeding anyway', elapsed))
         end
         if done then
-            tt.state             = 'POST_ALFRED_SETTLE'
-            tt.settle_started_at = now
+            tt.state                 = 'POST_ALFRED_SETTLE'
+            tt.settle_started_at     = now
+            tt.settle_rearm_logged   = false
             log(string.format(
                 'via-Temis preamble: entering post-Alfred settle (%.1fs)',
                 POST_ALFRED_SETTLE_SECONDS))
@@ -519,7 +543,10 @@ function M.process_tick(ctx)
         local settled  = now - tt.settle_started_at
         local busy_now = not alfred_idle()
         if busy_now then
-            log('via-Temis preamble: Alfred re-armed during settle — back to TEMIS_ALFRED')
+            if not tt.settle_rearm_logged then
+                log('via-Temis preamble: Alfred re-armed during settle — back to TEMIS_ALFRED')
+                tt.settle_rearm_logged = true
+            end
             alfred_trigger_now()
             tt.state             = 'TEMIS_ALFRED'
             tt.alfred_fired_at   = now
@@ -551,7 +578,8 @@ function M.process_tick(ctx)
             tt.snap_zone  = nil
             M.teleport_pending           = false
             M.teleport_incoming_first_seen = nil
-            M.teleport_holding_logged    = false
+            M.teleport_holding_key       = nil
+            M.teleport_limbo_logged      = false
             return 'aborted_limbo'
         elseif (now - tt.started_at) >= TELEPORT_CHECK_INTERVAL then
             local w         = get_current_world()
@@ -560,11 +588,15 @@ function M.process_tick(ctx)
             local in_limbo = cur_world == 'Limbo' or cur_zone == '[sno none]'
             if in_limbo then
                 tt.started_at = now
-                log(string.format(
-                    'teleport in-flight — world=%s zone=%s, holding for load to finish',
-                    tostring(cur_world), tostring(cur_zone)))
+                if not M.teleport_limbo_logged then
+                    log(string.format(
+                        'teleport in-flight — world=%s zone=%s, holding for load to finish',
+                        tostring(cur_world), tostring(cur_zone)))
+                    M.teleport_limbo_logged = true
+                end
                 return 'limbo'
             end
+            M.teleport_limbo_logged = false
             local changed = cur_world ~= tt.snap_world or cur_zone ~= tt.snap_zone
             local arrived_now = false
             if not changed then
@@ -575,7 +607,12 @@ function M.process_tick(ctx)
                     end
                 end
             end
-            if changed or arrived_now then
+            if ctx.incoming_is_helltide(wants) and not changed and not arrived_now then
+                tt.state      = 'IDLE'
+                tt.snap_world = nil
+                tt.snap_zone  = nil
+                log('teleport released — helltide incoming; HelltideRevamped handles zone search (no warplan retry loop)')
+            elseif changed or arrived_now then
                 tt.state      = 'IDLE'
                 tt.snap_world = nil
                 tt.snap_zone  = nil

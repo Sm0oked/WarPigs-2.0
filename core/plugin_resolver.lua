@@ -301,7 +301,7 @@ function resolver.stuck_recovery_disable_list()
     end
     add('AlfredTheButlerPlugin')
     add('SilentRavenPlugin')
-    for _, role_id in ipairs({ 'pit', 'helltide', 'undercity', 'nmd', 'horde', 'boss' }) do
+    for _, role_id in ipairs({ 'pit', 'helltide', 'undercity', 'horde', 'boss' }) do
         local role = registry.get_role(role_id)
         if role and role.all_globals then
             for _, g in ipairs(role.all_globals) do add(g) end

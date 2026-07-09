@@ -7,7 +7,6 @@ M.ROLE_MARKERS = {
     pit       = '__pit__',
     helltide  = '__helltide__',
     undercity = '__undercity__',
-    nmd       = '__nmd__',
     horde     = '__horde__',
     boss      = '__boss__',
 }
@@ -81,29 +80,6 @@ M.roles = {
                 label  = 'Wonder City',
                 global = 'WonderCityPlugin',
                 folder = 'WonderCity-2.0',
-            },
-        },
-        required_api = { 'enable', 'disable' },
-    },
-
-    nmd = {
-        label       = 'Nightmare dungeons',
-        marker      = '__nmd__',
-        default     = 0,
-        priority    = 55,
-        all_globals  = { 'NightmareCityPlugin' },
-        auto_globals = { 'NightmareCityPlugin' },
-        choices = {
-            {
-                id     = 'auto',
-                label  = 'Auto (NightmareCity)',
-                global = 'NightmareCityPlugin',
-            },
-            {
-                id     = 'nightmare_city',
-                label  = 'NightmareCity',
-                global = 'NightmareCityPlugin',
-                folder = 'NightmareCity',
             },
         },
         required_api = { 'enable', 'disable' },
@@ -266,7 +242,6 @@ M.settings_key = {
     pit       = 'plugin_pit',
     helltide  = 'plugin_helltide',
     undercity = 'plugin_undercity',
-    nmd       = 'plugin_nmd',
     horde     = 'plugin_horde',
     boss      = 'plugin_boss',
     nav       = 'plugin_nav',
@@ -276,7 +251,7 @@ M.settings_key = {
 
 -- Roles validated in the Plugin Selection menu (in order).
 M.menu_roles = {
-    'pit', 'helltide', 'undercity', 'nmd', 'horde', 'boss', 'nav', 'combat', 'alfred',
+    'pit', 'helltide', 'undercity', 'horde', 'boss', 'nav', 'combat', 'alfred',
 }
 
 -- Friendly name shown in the compact auto-detect status lines.
@@ -285,7 +260,6 @@ M.global_labels = {
     HelltideRevampedPlugin   = 'HelltideRevamped',
     BetterHelltidePlugin     = 'BetterHelltide',
     WonderCityPlugin         = 'Wonder City',
-    NightmareCityPlugin      = 'NightmareCity',
     InfernalHordesPlugin     = 'Infernal Horde',
     ReaperPlugin             = 'Reaper',
     BatmobilePlugin          = 'Batmobile',

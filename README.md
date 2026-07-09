@@ -2,7 +2,7 @@
 
 **Version 2.0.0** — WarPlans quest orchestrator for Diablo IV (QQT scripts).
 
-WarPigs watches your active WarPlans quests and automatically enables the right activity plugins (pit, helltide, undercity, nightmare dungeons, hordes, boss lairs), handles town transitions (Alfred, SilentRaven, teleport), and keeps your combat rotation running while questing.
+WarPigs watches your active WarPlans quests and automatically enables the right activity plugins (pit, helltide, undercity, hordes, boss lairs), handles town transitions (Alfred, SilentRaven, teleport), and keeps your combat rotation running while questing.
 
 ---
 
@@ -20,7 +20,6 @@ Each WarPlans activity type maps to a **role**. WarPigs resolves that role to a 
 | **Pit**                | Arkham Asylum                                     | `ArkhamAsylumPlugin`                                              |
 | **Helltide**           | HelltideRevamped, BetterHelltide                  | `HelltideRevampedPlugin`, `BetterHelltidePlugin`                  |
 | **Undercity**          | Wonder City                                       | `WonderCityPlugin`                                                |
-| **Nightmare dungeons** | NightmareCity                                     | `NightmareCityPlugin`                                             |
 | **Infernal Hordes**    | Infernal Horde                                    | `InfernalHordesPlugin`                                            |
 | **Boss lairs**         | Reaper                                            | `ReaperPlugin`                                                    |
 | **Navigation**         | Batmobile, Frigate                                | `BatmobilePlugin`, `FrigatePlugin`                                |
@@ -147,7 +146,7 @@ WarPlans quest keys still go in `orchestrator.quest_plugin_map`; use `registry.R
 These folder names under `scripts/` are recognized when the plugin scanner runs (automatically on first open of **Plugin Selection**):
 
 - `ArkhamAsylum`, `HelltideRevamped`, `BetterHelltide`, `WonderCity-2.0`
-- `NightmareCity`, `Infernal Horde`, `Reaper`
+- `Infernal Horde`, `Reaper`
 - `Batmobile`, `Frigate`
 - `rotation_barbarian`, `UniversalRotation`, `Scmurd-Warlock`
 - `BetterAlfred`
