@@ -42,6 +42,23 @@ local external     = require 'core.external'
 local state_tracker = require 'core.state_tracker'
 local session_stats = require 'core.session_stats'
 
+-- One-shot plugin scan on load so Boss/Helltide packs (e.g. Reaper3.0.pack)
+-- are detected without clicking Scan entries. Failures are non-fatal.
+do
+    local ok, scan = pcall(require, 'core.scripts_scan')
+    if ok and type(scan.refresh) == 'function' then
+        local scanned, err = pcall(scan.refresh)
+        if scanned then
+            console.print(string.format(
+                '[WarPigs] Auto-scan — %d folder(s), %d .pack(s) in %s',
+                scan.folder_count(), scan.pack_count(),
+                scan.get_scripts_root() or '?'))
+        else
+            console.print('[WarPigs] Auto-scan skipped: ' .. tostring(err))
+        end
+    end
+end
+
 local last_tick      = 0
 local tick_interval  = 0.5
 local was_enabled    = false

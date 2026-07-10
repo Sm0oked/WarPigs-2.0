@@ -25,7 +25,7 @@ M.folders = {
         horde = { global = 'InfernalHordesPlugin', label = 'Infernal Horde' },
     },
     Reaper = {
-        boss = { global = 'ReaperPlugin', label = 'Reaper' },
+        boss = { global = 'ReaperPlugin', label = 'Reaper 3.0.pack' },
     },
     Batmobile = {
         nav = { global = 'BatmobilePlugin', label = 'Batmobile / Chassis' },
@@ -51,6 +51,9 @@ M.pack_aliases = {
     ['BetterHelltide']           = 'BetterHelltide',
     ['BetterHelltide (3)']       = 'BetterHelltide',
     ['Chassis']                  = 'Chassis',
+    ['Reaper3.0']                = 'Reaper',
+    ['Reaper3']                  = 'Reaper',
+    ['Reaper 3.0']               = 'Reaper',
     ['SteroidAlfredV2-1.1.3']    = 'BetterAlfred',
     ['SteroidAlfredV2-1.1.2']    = 'BetterAlfred',
     ['SteroidAlfredV2-1.1.1']    = 'BetterAlfred',
@@ -74,6 +77,8 @@ function M.folder_key_for_pack_basename(basename)
     end
     if basename:match('^BetterHelltide') then return 'BetterHelltide' end
     if basename:match('^Chassis') then return 'Chassis' end
+    -- Reaper3.0.pack / Reaper-v3.pack / Reaper_3.0.pack → boss role
+    if basename:match('^[Rr]eaper') then return 'Reaper' end
     if basename:match('^SteroidAlfred') or basename:match('^SteroidUtils') then return 'BetterAlfred' end
     if basename:match('^Looteer') then return 'LooteerV3' end
     if basename:match('^HordeDev') then return 'Infernal Horde' end
@@ -96,6 +101,8 @@ function M.pack_filenames_to_probe()
     end
     add('BetterHelltide.pack')
     add('BetterHelltide (3).pack')
+    add('Reaper3.0.pack')
+    add('Reaper3.pack')
     return out
 end
 

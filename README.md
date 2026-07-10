@@ -1,6 +1,6 @@
 # WarPigs Orchestrator
 
-**Version 2.0.3** — WarPlans quest orchestrator for Diablo IV (QQT scripts).
+**Version 2.0.6** — WarPlans quest orchestrator for Diablo IV (QQT scripts).
 
 WarPigs watches your active WarPlans quests and automatically enables the right activity plugins (pit, helltide, undercity, hordes, boss lairs), handles town transitions (Alfred, SilentRaven, teleport). Each activity bot handles its own combat rotation.
 
@@ -21,14 +21,14 @@ Each WarPlans activity type maps to a **role**. WarPigs resolves that role to a 
 | **Helltide**           | HelltideRevamped, BetterHelltide                  | `HelltideRevampedPlugin`, `HelltideLitePlugin` (BetterHelltide pack) |
 | **Undercity**          | Wonder City                                       | `WonderCityPlugin`                                                |
 | **Infernal Hordes**    | Infernal Horde                                    | `InfernalHordesPlugin`                                            |
-| **Boss lairs**         | Reaper                                            | `ReaperPlugin`                                                    |
+| **Boss lairs**         | Reaper folder **or** `Reaper3.0.pack`              | `ReaperPlugin`                                                    |
 | **Navigation**         | Batmobile, Frigate                                | `BatmobilePlugin`, `FrigatePlugin`                                |
 | **Alfred**             | Better Alfred, Steroid Alfred, Alfred The Butler  | `AlfredTheButlerPlugin` / `PLUGIN_alfred_the_butler`              |
 
 
 Quest entries in `core/orchestrator.lua` use **role markers** (e.g. `__helltide__`, `__pit__`) instead of fixed plugin names. The resolver turns those markers into whatever plugin you (or Auto) selected.
 
-**Example:** Switching helltide bots is a dropdown under **Plugin Selection → Helltide** when both HelltideRevamped and BetterHelltide are installed. Pick **BetterHelltide** explicitly to use the pack (`HelltideLitePlugin`); Auto prefers BetterHelltide when that global is loaded.
+**Example:** Switching helltide bots is a dropdown under **Plugin Selection → Helltide**. **Auto prefers HelltideRevamped** when both are loaded. Pick **BetterHelltide** explicitly to use the pack (`HelltideLitePlugin`). Disable the unused one in QQT Scripts so they do not fight.
 
 ### 2. Auto-detect (default)
 
@@ -54,7 +54,7 @@ Optional on-screen panel (position, opacity, font size). Works **independently**
 
 
 
-## Menu guide (v2.0.3)
+## Menu guide (v2.0.6)
 
 Open: **Z | War Pigs | Orchestrator**
 
@@ -152,12 +152,12 @@ WarPigs must discover these so **Only show installed plugins** and manual dropdo
 ### How to scan
 
 1. Open **Z | War Pigs → Plugin Selection**.
-2. Click **Scan entries** (runs once per click; no background scanning).
+2. WarPigs **auto-scans once on load**. Click **Scan entries** anytime to refresh after adding/removing packs.
 3. Check the summary line and console output, e.g.  
-   `[WarPigs] Plugin scan complete — 12 folder(s), 3 .pack(s) in c:\diablo_qqt\scripts`
+   `[WarPigs] Auto-scan — 12 folder(s), 3 .pack(s) in c:\diablo_qqt\scripts`
 4. The menu also shows **Scripts folder:** so you can confirm the correct root is used.
 
-On Windows, listing `.pack` files uses a one-shot `dir /b *.pack` via `io.popen` **inside `pcall`** when you click **Scan entries**. If directory listing fails, the scanner falls back to probing known pack filenames with `io.open`. This may cause a brief CMD flash on success (same pattern as Universal Rotation profile discovery).
+On Windows, listing `.pack` files uses a one-shot `dir /b *.pack` via `io.popen` **inside `pcall`** (on load and when you click **Scan entries**). If directory listing fails, the scanner falls back to probing known pack filenames with `io.open`. This may cause a brief CMD flash on success (same pattern as Universal Rotation profile discovery).
 
 ### What the scanner checks
 
@@ -172,25 +172,40 @@ On Windows, listing `.pack` files uses a one-shot `dir /b *.pack` via `io.popen`
 
 Pack files often include version suffixes. `core/plugin_catalog.lua` maps basenames to catalog keys:
 
-| Pack basename pattern | Catalog key | Typical role |
-| --------------------- | ----------- | ------------ |
-| `BetterHelltide*` | `BetterHelltide` | Helltide |
-| `Looteer*` | `LooteerV3` | (unmapped helper; shown in scan summary) |
-| `SteroidAlfred*` / `SteroidUtils*` | `BetterAlfred` | Alfred |
-| `HordeDev*` | `Infernal Horde` | Infernal Hordes |
+| Pack basename pattern | Catalog key | Role |
+|----------------------|-------------|------|
+| `BetterHelltide*` | BetterHelltide | helltide |
+| `Reaper*` / `Reaper3.0.pack` | Reaper | boss |
+| `Chassis*` | Chassis | nav |
+| `Looteer*` | LooteerV3 | (scan only) |
+| `SteroidAlfred*` / `SteroidUtils*` | BetterAlfred | alfred |
 | Exact names in `pack_aliases` | See `plugin_catalog.lua` | Various |
 
-Exact legacy names (e.g. `BetterHelltide.pack`, `SteroidAlfredV2-1.1.3.pack`) are still probed as a fallback if directory listing is unavailable.
+Exact legacy names (e.g. `BetterHelltide.pack`, `SteroidAlfredV2-1.1.3.pack`, `Reaper3.0.pack`) are still probed as a fallback if directory listing is unavailable.
+
+### Boss lairs + Reaper3.0.pack
+
+WarPigs boss quests (`WarPlans_QST_BossLair_*`) enable **`ReaperPlugin`**.
+
+1. Place **`Reaper3.0.pack`** in `c:\diablo_qqt\scripts\` (next to WarPigs).
+2. In QQT Scripts: **enable `Reaper3.0.pack`** and **disable the `Reaper` folder** (both claim `ReaperPlugin`).
+3. Leave Boss lairs on **Reaper 3.0.pack** (default) — WarPigs uses `ReaperPlugin` from the pack once it is loaded.
+4. Reload scripts. If you still see `REAPER v2.6` on screen, the folder is still enabled / loaded last.
+
+**Want open-source Reaper v2.6 instead:** enable the **`Reaper` folder**, **disable `Reaper3.0.pack`** in QQT, reload. Having the `.pack` file on disk alone no longer blocks the folder from loading.
+
+If both are **enabled** in QQT, whichever loads last owns `ReaperPlugin` — keep only one enabled.
 
 ### Files changed for .pack support
 
 | File | Change |
 | ---- | ------ |
 | `core/scripts_scan.lua` | List all `*.pack` in `scripts/` root; track pack file count; improve `get_scripts_root()` via WarPigs `package.path` entry; merge loaded `.pack` paths from `package.path` |
-| `core/plugin_catalog.lua` | Add `pack_aliases`, `disk_folder_aliases`, `pack_filenames_to_probe()`, `resolve_scan_key()`, `installed_scan_hit()` for versioned pack names |
-| `core/plugin_registry.lua` | `BetterHelltide` choice uses `HelltideLitePlugin`; static choice helpers; stable choice IDs per role |
-| `gui.lua` | Restore **Scan entries** and **Only show installed plugins**; static combo labels (crash-safe); clamp combo indices; sync selection after render; show scan summary with folder count, pack count, and scripts path; remove auto-scan on menu open |
-| `core/settings.lua` | Persist `plugin_scan_installed_only` and per-role `plugin_*_choice` stable IDs from GUI |
+| `core/plugin_catalog.lua` | Add `pack_aliases`, `disk_folder_aliases`, `pack_filenames_to_probe()`, `resolve_scan_key()`, `installed_scan_hit()` for versioned pack names; **`Reaper*` / `Reaper3.0.pack` → boss role** |
+| `core/plugin_registry.lua` | `BetterHelltide` choice uses `HelltideLitePlugin`; boss choices label Reaper3.0.pack; static choice helpers; stable choice IDs per role |
+| `gui.lua` | **Scan entries** + installed-only filter; boss tooltip mentions Reaper3.0.pack; static combo labels |
+| `main.lua` | **Auto-scan once on load** so packs are detected without a manual click |
+| `core/plugin_resolver.lua` | Reaper pack disk hint (`enable Reaper3.0.pack…`); boss Auto resolve fallback like BetterHelltide |
 
 ### Bug that was fixed
 
@@ -198,7 +213,7 @@ Exact legacy names (e.g. `BetterHelltide.pack`, `SteroidAlfredV2-1.1.3.pack`) ar
 
 **Root cause:** Early scanner only probed a **fixed list** of exact filenames (`BetterHelltide.pack`, `SteroidAlfredV2-1.1.3.pack`, etc.). Real installs use **versioned names** in the scripts root (`BetterHelltide-v1.7.9.pack`), so `io.open` never found them.
 
-**Fix:** Enumerate every `*.pack` in the scripts root, then map each basename to a catalog key with prefix rules (`^BetterHelltide`, `^Looteer`, etc.).
+**Fix:** Enumerate every `*.pack` in the scripts root, then map each basename to a catalog key with prefix rules (`^BetterHelltide`, `^Reaper`, `^Looteer`, etc.).
 
 ### Adding a new `.pack` plugin
 
@@ -217,9 +232,8 @@ Exact legacy names (e.g. `BetterHelltide.pack`, `SteroidAlfredV2-1.1.3.pack`) ar
 These folder names under `scripts/` are recognized when you click **Scan entries**:
 
 - `ArkhamAsylum`, `HelltideRevamped`, `BetterHelltide`, `WonderCity-2.0`
-- `Infernal Horde`, `Reaper`
-- `Batmobile`, `Frigate`, `Chassis` (nav via `BatmobilePlugin`)
-- `BetterAlfred`
+- `Infernal Horde`, `Reaper` (also **`Reaper3.0.pack`** in scripts root)
+- `Batmobile`, `Chassis`, `Frigate`, `BetterAlfred`
 
 **Pack-only plugins** (no unpacked folder) are detected when a matching `*.pack` file sits in the `scripts/` root — see [Plugin scan & .pack files](#plugin-scan--pack-files).
 
@@ -259,6 +273,31 @@ local st = WarPigsPlugin.status()
 
 
 ## Changelog
+
+### 2.0.6 (helltide Auto confusion → all roles)
+
+- **Auto prefers HelltideRevamped** when both Revamped and BetterHelltide are loaded
+- Stop inventing plugin globals just because a `.pack` / folder is on disk but disabled in QQT (**all roles**)
+- **Every role dropdown always visible** (pit, helltide, undercity, horde, boss, nav, alfred)
+- Console log once per role when Auto sees multiple loaded plugins
+- Menu copy clarifies: leave on Auto or pick explicitly; disable unused bots in QQT Scripts
+
+### 2.0.5 (teleport retry harden)
+
+- **Pit** `arrived_when`: town crafter **or** already in `PIT_*` / `PIT_Subzone` — stops mid-Pit `world/zone unchanged` loops
+- **Boss lairs** `arrived_when`: already in `Boss_WT*` zone/world — same for Reaper mid-lair
+- **TELEPORTING** safety: give up after **5** unchanged retries and release the enable gate
+- Skip / cancel Temis preamble when already in Pit or boss lair (same idea as Undercity)
+
+### 2.0.4 (disable() harden + transition / enable thrash)
+
+- Wrap all plugin `disable` / `hard_disable` calls in `pcall` so a broken plugin (e.g. BetterHelltide `tasks.farm` require while pack path is dead) cannot abort the orchestrator mid-handoff
+- Always clear `owned` / `managed_by_us` after a disable attempt — fixes thrash re-enable (`plugin dropped off unexpectedly`) when `disable()` threw before ownership was cleared
+- Skip dropout re-enable for 30s after a disable throw; clear the marker on successful enable / stand_down
+- Treat `gui_enabled` as on while WarPigs manages a plugin (WonderCity keybind gate)
+- Cap enable retries (give up after 8 failed status confirms) so WonderCity cannot loop forever
+- **TO_TEMIS:** after 5 timed-out Temis waypoint retries, skip preamble and go to warplan teleport
+- WonderCity `enable()` clears "Use keybind" so external enable can report `enabled=true`
 
 ### 2.0.3 (dropdown selection fix)
 

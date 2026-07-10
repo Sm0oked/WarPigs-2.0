@@ -13,12 +13,19 @@ local TEMIS_ZONE                  = 'Skov_Temis'
 local TEMIS_TELEPORT_TIMEOUT      = 30.0
 local TEMIS_TELEPORT_DEBOUNCE     = 6.0
 local TEMIS_LINGER_RETRY_INTERVAL = 3.0
+-- After this many timed-out Temis waypoint retries, abandon the preamble and
+-- go straight to warplan teleport (or IDLE). Stops the overlay sitting on
+-- "transition TO_TEMIS" forever when the channel keeps getting cancelled.
+local TEMIS_MAX_TIMEOUT_RETRIES   = 5
 local ALFRED_MIN_DWELL              = 6.0
 local ALFRED_PICKUP_TIMEOUT         = 8.0
 local ALFRED_MAX_SECONDS            = 180.0
 local POST_ALFRED_SETTLE_SECONDS    = 3.0
 local TELEPORT_CHECK_INTERVAL       = 3.0
 local TELEPORT_INCOMING_SETTLE     = 2.5
+-- Safety net when arrived_when misses mid-run (or warplan teleport is a no-op):
+-- stop endless "world/zone unchanged" retries and release the enable gate.
+local TELEPORT_MAX_UNCHANGED_RETRIES = 5
 local RAVEN_NPC_POSITION  = { x = 2596.38, y = -495.79, z = 30.52 }
 local CROW_ARRIVAL_RADIUS = 3.5
 local CROW_WALK_TIMEOUT   = 30.0
@@ -173,6 +180,8 @@ function M.reset()
     tt.silent_raven_fired_at = nil
     tt.silent_raven_result   = nil
     tt.crow_walk_started_at  = nil
+    tt.temis_timeout_retries = 0
+    tt.teleport_unchanged_retries = 0
     raven_coord.reset_session()
 end
 
@@ -261,6 +270,7 @@ function M.process_tick(ctx)
         else
             tt.state      = 'TELEPORTING'
             tt.started_at = now_
+            tt.teleport_unchanged_retries = 0
             M.teleport_limbo_logged = false
             if _G.warplan and type(warplan.teleport_to_activity) == 'function' then
                 local snap_w = get_current_world()
@@ -349,6 +359,12 @@ function M.process_tick(ctx)
             if ctx.player_in_undercity and ctx.player_in_undercity() then
                 log('teleport skipped — player already in Undercity dungeon')
                 tt.state = 'IDLE'
+            elseif ctx.player_in_pit and ctx.player_in_pit() then
+                log('teleport skipped — player already in Pit')
+                tt.state = 'IDLE'
+            elseif ctx.player_in_boss_lair and ctx.player_in_boss_lair() then
+                log('teleport skipped — player already in boss lair')
+                tt.state = 'IDLE'
             elseif ctx.incoming_is_helltide(wants)
                 and (ctx.is_plugin_on(ctx.helltide_plugin_name()) or ctx.has_helltide_buff())
             then
@@ -380,6 +396,7 @@ function M.process_tick(ctx)
                     end
                     tt.state      = 'TO_TEMIS'
                     tt.started_at = now
+                    tt.temis_timeout_retries = 0
                     log('via-Temis preamble: teleport_to_waypoint(Temis) sent')
                 else
                     start_warplan_teleport(wants, now)
@@ -393,7 +410,19 @@ function M.process_tick(ctx)
             log('via-Temis preamble: cancelled — player in Undercity dungeon')
             tt.state = 'IDLE'
             M.teleport_pending = false
+            tt.temis_timeout_retries = 0
+        elseif ctx.player_in_pit and ctx.player_in_pit() then
+            log('via-Temis preamble: cancelled — player in Pit')
+            tt.state = 'IDLE'
+            M.teleport_pending = false
+            tt.temis_timeout_retries = 0
+        elseif ctx.player_in_boss_lair and ctx.player_in_boss_lair() then
+            log('via-Temis preamble: cancelled — player in boss lair')
+            tt.state = 'IDLE'
+            M.teleport_pending = false
+            tt.temis_timeout_retries = 0
         elseif in_temis() then
+            tt.temis_timeout_retries = 0
             if alfred_trigger_now() then
                 tt.state             = 'TEMIS_ALFRED'
                 tt.started_at        = now
@@ -425,11 +454,22 @@ function M.process_tick(ctx)
             tt.started_at    = now
         elseif (now - tt.started_at) >= TEMIS_TELEPORT_TIMEOUT then
             if (now - tt.last_temis_tp) >= TEMIS_TELEPORT_DEBOUNCE then
-                log('via-Temis preamble: TO_TEMIS timeout — retrying waypoint')
-                orchestrator._stop_whirlwind()
-                teleport_to_waypoint(TEMIS_WP)
-                tt.last_temis_tp = now
-                tt.started_at    = now
+                tt.temis_timeout_retries = (tt.temis_timeout_retries or 0) + 1
+                if tt.temis_timeout_retries >= TEMIS_MAX_TIMEOUT_RETRIES then
+                    log(string.format(
+                        'via-Temis preamble: TO_TEMIS gave up after %d timeouts — skipping to warplan teleport',
+                        tt.temis_timeout_retries))
+                    tt.temis_timeout_retries = 0
+                    start_warplan_teleport(wants, now)
+                else
+                    log(string.format(
+                        'via-Temis preamble: TO_TEMIS timeout — retrying waypoint (%d/%d)',
+                        tt.temis_timeout_retries, TEMIS_MAX_TIMEOUT_RETRIES))
+                    orchestrator._stop_whirlwind()
+                    teleport_to_waypoint(TEMIS_WP)
+                    tt.last_temis_tp = now
+                    tt.started_at    = now
+                end
             end
         end
     end
@@ -618,27 +658,42 @@ function M.process_tick(ctx)
                 tt.state      = 'IDLE'
                 tt.snap_world = nil
                 tt.snap_zone  = nil
+                tt.teleport_unchanged_retries = 0
                 log('teleport released — helltide incoming; HelltideRevamped handles zone search (no warplan retry loop)')
             elseif changed or arrived_now then
                 tt.state      = 'IDLE'
                 tt.snap_world = nil
                 tt.snap_zone  = nil
+                tt.teleport_unchanged_retries = 0
                 log(string.format('teleport confirmed (%s world=%s zone=%s) — releasing enable gate',
                     arrived_now and 'arrived_when' or 'world/zone',
                     tostring(cur_world), tostring(cur_zone)))
             else
-                tt.started_at = now
-                if _G.warplan and type(warplan.teleport_to_activity) == 'function' then
-                    orchestrator._stop_whirlwind()
-                    warplan.teleport_to_activity()
+                tt.teleport_unchanged_retries = (tt.teleport_unchanged_retries or 0) + 1
+                if tt.teleport_unchanged_retries >= TELEPORT_MAX_UNCHANGED_RETRIES then
                     log(string.format(
-                        'teleport retry — world/zone unchanged (world=%s zone=%s), retrying in %.1fs',
-                        tostring(cur_world), tostring(cur_zone), TELEPORT_CHECK_INTERVAL))
-                else
+                        'teleport gave up after %d unchanged retries (world=%s zone=%s) — releasing gate',
+                        tt.teleport_unchanged_retries, tostring(cur_world), tostring(cur_zone)))
                     tt.state      = 'IDLE'
                     tt.snap_world = nil
                     tt.snap_zone  = nil
-                    log('teleport: warplan not available on retry — releasing gate')
+                    tt.teleport_unchanged_retries = 0
+                else
+                    tt.started_at = now
+                    if _G.warplan and type(warplan.teleport_to_activity) == 'function' then
+                        orchestrator._stop_whirlwind()
+                        warplan.teleport_to_activity()
+                        log(string.format(
+                            'teleport retry — world/zone unchanged (world=%s zone=%s), retrying in %.1fs (%d/%d)',
+                            tostring(cur_world), tostring(cur_zone), TELEPORT_CHECK_INTERVAL,
+                            tt.teleport_unchanged_retries, TELEPORT_MAX_UNCHANGED_RETRIES))
+                    else
+                        tt.state      = 'IDLE'
+                        tt.snap_world = nil
+                        tt.snap_zone  = nil
+                        tt.teleport_unchanged_retries = 0
+                        log('teleport: warplan not available on retry — releasing gate')
+                    end
                 end
             end
         end

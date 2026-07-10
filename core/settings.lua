@@ -3,7 +3,7 @@
 -- would otherwise circular-require and leave a broken cached gui module.
 
 local PLUGIN_LABEL   = 'war_pigs'
-local PLUGIN_VERSION = '2.0.3'
+local PLUGIN_VERSION = '2.0.6'
 
 local settings = {
     plugin_label    = PLUGIN_LABEL,
@@ -32,7 +32,7 @@ local settings = {
     plugin_horde     = 0,
     plugin_horde_choice = 'auto',
     plugin_boss      = 0,
-    plugin_boss_choice = 'auto',
+    plugin_boss_choice = 'reaper30',
     plugin_nav       = 0,
     plugin_nav_choice = 'auto',
     plugin_alfred    = 0,

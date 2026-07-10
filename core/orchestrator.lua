@@ -145,6 +145,31 @@ local function in_undercity_zone()
     return zname:match('X1_Undercity_') ~= nil
 end
 
+-- Mid-Pit: world name is always PIT_* (e.g. PIT_Ancients_Flooded); zone is
+-- often PIT_Subzone on every floor. Without this, warplan teleport mid-run is
+-- a no-op and TELEPORTING loops on "world/zone unchanged".
+local function in_pit_zone()
+    local ok, w = pcall(function() return get_current_world() end)
+    if not ok or w == nil then return false end
+    local okw, wname = pcall(function() return w:get_name() end)
+    if okw and type(wname) == 'string' and wname:match('^PIT_') then return true end
+    local okz, zname = pcall(function() return w:get_current_zone_name() end)
+    return okz and type(zname) == 'string' and zname:find('PIT_', 1, true) ~= nil
+end
+
+-- Mid boss-lair: Reaper zones/worlds use Boss_WT* prefixes (and Belial variants).
+local function in_boss_lair_zone()
+    local ok, w = pcall(function() return get_current_world() end)
+    if not ok or w == nil then return false end
+    local function is_boss_name(s)
+        return type(s) == 'string' and s:find('Boss_WT', 1, true) ~= nil
+    end
+    local okw, wname = pcall(function() return w:get_name() end)
+    if is_boss_name(wname) then return true end
+    local okz, zname = pcall(function() return w:get_current_zone_name() end)
+    return is_boss_name(zname)
+end
+
 -- Predicate: are there live enemies close enough that the teleport channel
 -- will be interrupted by incoming damage? Used to defer
 -- warplan.teleport_to_activity() out of a helltide zone — once the rotation
@@ -225,6 +250,15 @@ end
 
 local function reaper_run_boss(p, boss_id)
     reset_reaper_run_once()
+    -- Guard: open-source folder tags source='folder' / version='2.6'.
+    -- Reaper 3.0.pack should own ReaperPlugin when Boss → Reaper 3.0.pack is selected.
+    if p and (p.source == 'folder' or p.version == '2.6') then
+        local choice = resolver.get_choice('boss')
+        if choice and choice.id == 'reaper30' then
+            console.print('[WarPigs] WARNING: Boss is set to Reaper 3.0.pack but open-source Reaper v2.6 is loaded.')
+            console.print('[WarPigs] Fix: enable Reaper3.0.pack in QQT Scripts and DISABLE the Reaper folder, then reload.')
+        end
+    end
     if type(p.run_once) == 'function' then
         p.run_once(boss_id, nil, make_reaper_callback())
     else
@@ -238,6 +272,17 @@ end
 
 local function reaper_run_once_disable_when()
     return reaper_run_once.complete == true
+end
+
+local function boss_map_entry(boss_id)
+    return {
+        plugin = registry.ROLE_MARKERS.boss,
+        enable = function(p) reaper_run_boss(p, boss_id) end,
+        disable_when = reaper_run_once_disable_when,
+        max_disable_defer_seconds = 300,
+        -- Already inside any boss lair — don't re-fire warplan teleport.
+        arrived_when = in_boss_lair_zone,
+    }
 end
 
 -- WarPigs always runs Infernal Hordes on 10-wave compasses. HordeDev's GUI
@@ -305,12 +350,11 @@ orchestrator.quest_plugin_map = {
         -- phase). Wait for the player to fully return to town before letting
         -- the next plugin take over.
         disable_when = in_town_disable_when,
-        -- Pit tower lives in Temis. If we're already in Temis when the teleport
-        -- sequence fires, world/zone won't change and the confirmation loop
-        -- would retry forever. arrived_when lets the orchestrator skip or
-        -- confirm the teleport when the pit tower actor is already visible.
+        -- Town tower OR already mid-Pit. Mid-run without the PIT_ check caused
+        -- endless "teleport retry — world/zone unchanged" in PIT_Subzone.
         arrived_when = function()
             return actor_present('TWN_Kehj_IronWolves_PitKey_Crafter')
+                or in_pit_zone()
         end,
     },
 
@@ -445,95 +489,22 @@ orchestrator.quest_plugin_map = {
     -- guesses based on the "Andariel" and "Harby" precedents. Wrong guesses
     -- are harmless (substring just won't match anything) — verify via the
     -- "Log ALL quests" mode and rename as needed.
-    WarPlans_QST_BossLair_Andariel = {  -- CONFIRMED
-        plugin = registry.ROLE_MARKERS.boss,
-        enable = function(p) reaper_run_boss(p,'andariel') end,
-        disable_when = reaper_run_once_disable_when,
-        max_disable_defer_seconds = 300,
-    },
-    WarPlans_QST_BossLair_Harby = {     -- CONFIRMED (harbinger)
-        plugin = registry.ROLE_MARKERS.boss,
-        enable = function(p) reaper_run_boss(p,'harbinger') end,
-        disable_when = reaper_run_once_disable_when,
-        max_disable_defer_seconds = 300,
-    },
-    WarPlans_QST_BossLair_Duriel = {    -- guess
-        plugin = registry.ROLE_MARKERS.boss,
-        enable = function(p) reaper_run_boss(p,'duriel') end,
-        disable_when = reaper_run_once_disable_when,
-        max_disable_defer_seconds = 300,
-    },
-    WarPlans_QST_BossLair_Varshan = {   -- guess
-        plugin = registry.ROLE_MARKERS.boss,
-        enable = function(p) reaper_run_boss(p,'varshan') end,
-        disable_when = reaper_run_once_disable_when,
-        max_disable_defer_seconds = 300,
-    },
-    WarPlans_QST_BossLair_PenitentKnight = {  -- CONFIRMED (grigoire)
-        plugin = registry.ROLE_MARKERS.boss,
-        enable = function(p) reaper_run_boss(p,'grigoire') end,
-        disable_when = reaper_run_once_disable_when,
-        max_disable_defer_seconds = 300,
-    },
-    WarPlans_QST_BossLair_Zir = {  -- CONFIRMED (log 2026-05-03: id=2317384)
-        plugin = registry.ROLE_MARKERS.boss,
-        enable = function(p) reaper_run_boss(p,'zir') end,
-        disable_when = reaper_run_once_disable_when,
-        max_disable_defer_seconds = 300,
-    },
-    -- Beast in Ice: asset name is Boss_WT4_MegaDemon, but quests typically use
-    -- the display name (per Harby/PenitentKnight precedent). Listing multiple
-    -- aliases so we match whatever Blizzard chose. Multiple keys → same plugin
-    -- is supported (kept enabled while ANY matches). Confirm the real name by
-    -- checking active WarPlans_QST_BossLair_* quest keys; trim misses afterward.
-    WarPlans_QST_BossLair_MegaDemon = {      -- asset-name guess
-        plugin = registry.ROLE_MARKERS.boss,
-        enable = function(p) reaper_run_boss(p,'beast') end,
-        disable_when = reaper_run_once_disable_when,
-        max_disable_defer_seconds = 300,
-    },
-    WarPlans_QST_BossLair_Beast = {          -- display-name guess (also matches BeastInIce via substring)
-        plugin = registry.ROLE_MARKERS.boss,
-        enable = function(p) reaper_run_boss(p,'beast') end,
-        disable_when = reaper_run_once_disable_when,
-        max_disable_defer_seconds = 300,
-    },
-    WarPlans_QST_BossLair_BeastInIce = {     -- display-name (full) guess
-        plugin = registry.ROLE_MARKERS.boss,
-        enable = function(p) reaper_run_boss(p,'beast') end,
-        disable_when = reaper_run_once_disable_when,
-        max_disable_defer_seconds = 300,
-    },
-    WarPlans_QST_BossLair_IceBeast = {       -- guess (alternate word order)
-        plugin = registry.ROLE_MARKERS.boss,
-        enable = function(p) reaper_run_boss(p,'beast') end,
-        disable_when = reaper_run_once_disable_when,
-        max_disable_defer_seconds = 300,
-    },
-    WarPlans_QST_BossLair_Wendigo = {        -- guess (lore name for Beast in Ice)
-        plugin = registry.ROLE_MARKERS.boss,
-        enable = function(p) reaper_run_boss(p,'beast') end,
-        disable_when = reaper_run_once_disable_when,
-        max_disable_defer_seconds = 300,
-    },
-    WarPlans_QST_BossLair_Urivar = {    -- guess
-        plugin = registry.ROLE_MARKERS.boss,
-        enable = function(p) reaper_run_boss(p,'urivar') end,
-        disable_when = reaper_run_once_disable_when,
-        max_disable_defer_seconds = 300,
-    },
-    WarPlans_QST_BossLair_Butcher = {   -- guess
-        plugin = registry.ROLE_MARKERS.boss,
-        enable = function(p) reaper_run_boss(p,'butcher') end,
-        disable_when = reaper_run_once_disable_when,
-        max_disable_defer_seconds = 300,
-    },
-    WarPlans_QST_BossLair_Belial = {    -- guess
-        plugin = registry.ROLE_MARKERS.boss,
-        enable = function(p) reaper_run_boss(p,'belial') end,
-        disable_when = reaper_run_once_disable_when,
-        max_disable_defer_seconds = 300,
-    },
+    -- arrived_when = in_boss_lair_zone stops TELEPORTING retry loops mid-lair.
+    WarPlans_QST_BossLair_Andariel = boss_map_entry('andariel'),  -- CONFIRMED
+    WarPlans_QST_BossLair_Harby = boss_map_entry('harbinger'),     -- CONFIRMED
+    WarPlans_QST_BossLair_Duriel = boss_map_entry('duriel'),
+    WarPlans_QST_BossLair_Varshan = boss_map_entry('varshan'),
+    WarPlans_QST_BossLair_PenitentKnight = boss_map_entry('grigoire'),  -- CONFIRMED
+    WarPlans_QST_BossLair_Zir = boss_map_entry('zir'),  -- CONFIRMED
+    -- Beast in Ice: multiple quest-name aliases → same boss_id.
+    WarPlans_QST_BossLair_MegaDemon = boss_map_entry('beast'),
+    WarPlans_QST_BossLair_Beast = boss_map_entry('beast'),
+    WarPlans_QST_BossLair_BeastInIce = boss_map_entry('beast'),
+    WarPlans_QST_BossLair_IceBeast = boss_map_entry('beast'),
+    WarPlans_QST_BossLair_Wendigo = boss_map_entry('beast'),
+    WarPlans_QST_BossLair_Urivar = boss_map_entry('urivar'),
+    WarPlans_QST_BossLair_Butcher = boss_map_entry('butcher'),
+    WarPlans_QST_BossLair_Belial = boss_map_entry('belial'),
 }
 
 local function resolve_map_plugin(plugin_field)
@@ -574,7 +545,9 @@ local pending_disable_since = {}  -- plugin_name -> time when deferral started (
 local last_disable_time     = {}  -- plugin_name -> time the disable actually fired (for TRANSITION_GAP_SECONDS gate)
 local enable_blocked        = {}  -- plugin_name -> stable gate key (suppresses repeat logs)
 local enable_fail_logged    = {}  -- plugin_name -> true (enable retry failure logged once)
+local enable_fail_count     = {}  -- plugin_name -> consecutive status-not-on after enable()
 local reenable_logged       = {}  -- plugin_name -> true (dropout re-enable logged once)
+local ENABLE_FAIL_GIVE_UP   = 8   -- stop dropout thrash after this many failed confirms
 local missing_plugin_warned = {}  -- plugin_name -> true (log once per session)
 local was_off        = {}  -- plugin_name -> true (we believe it is currently off; suppresses repeated logs)
 -- Same-activity continuation: when the same plugin re-matches within this
@@ -663,7 +636,16 @@ local function is_plugin_on(plugin_name)
                    or nil
     if status_fn then
         local ok, s = pcall(status_fn)
-        if ok and type(s) == 'table' then return s.enabled == true end
+        if ok and type(s) == 'table' then
+            if s.enabled == true then return true end
+            -- WonderCity (and similar): optional keybind gate can make
+            -- enabled=false while Enable is checked after our enable().
+            -- Trust gui_enabled only while we manage the plugin.
+            if managed_by_us[plugin_name] and s.gui_enabled == true then
+                return true
+            end
+            return false
+        end
     end
     return owned[plugin_name] == true or managed_by_us[plugin_name] == true
 end
@@ -673,6 +655,8 @@ local function we_manage(plugin_name)
 end
 
 -- Turn off other globals in the same role (e.g. HR when BetterHelltide is selected).
+-- Always prefer hard_disable. Soft-paused HR reports enabled=false but Enable
+-- stays checked — is_plugin_on misses it, so we also tear down paused siblings.
 local function disable_role_siblings(plugin_name)
     for _, role in pairs(registry.roles) do
         if role.all_globals then
@@ -682,14 +666,31 @@ local function disable_role_siblings(plugin_name)
             end
             if in_role then
                 for _, g in ipairs(role.all_globals) do
-                    if g ~= plugin_name and is_plugin_on(g) then
-                        log('disabling ' .. g .. ' — sibling of ' .. plugin_name)
+                    if g ~= plugin_name then
                         local p = _G[g]
-                        if p and type(p.disable) == 'function' then
-                            pcall(p.disable)
+                        if not p then goto continue end
+                        local needs_off = is_plugin_on(g)
+                        if not needs_off and type(p.status) == 'function' then
+                            local ok, s = pcall(p.status)
+                            if ok and type(s) == 'table' then
+                                if s.paused == true or s.gui_enabled == true
+                                    or s.enabled == true
+                                then
+                                    needs_off = true
+                                end
+                            end
                         end
-                        owned[g]         = nil
-                        managed_by_us[g] = nil
+                        if needs_off then
+                            log('disabling ' .. g .. ' — sibling of ' .. plugin_name)
+                            if type(p.hard_disable) == 'function' then
+                                pcall(p.hard_disable)
+                            elseif type(p.disable) == 'function' then
+                                pcall(p.disable)
+                            end
+                            owned[g]         = nil
+                            managed_by_us[g] = nil
+                        end
+                        ::continue::
                     end
                 end
             end
@@ -752,12 +753,32 @@ local function plugin_enable(entry, reason)
         owned[plugin_name] = true
         enable_blocked[plugin_name] = nil
         enable_fail_logged[plugin_name] = nil
+        enable_fail_count[plugin_name] = nil
         reenable_logged[plugin_name] = nil
+        if orchestrator._disable_threw_at then
+            orchestrator._disable_threw_at[plugin_name] = nil
+        end
         last_enabled_reason[plugin_name] = reason
         log('enabled ' .. plugin_name .. ' (' .. (reason or '?') .. ')')
-    elseif not enable_fail_logged[plugin_name] then
-        log('enable of ' .. plugin_name .. ' did not result in enabled status — will retry next tick')
-        enable_fail_logged[plugin_name] = true
+    else
+        local n = (enable_fail_count[plugin_name] or 0) + 1
+        enable_fail_count[plugin_name] = n
+        if n >= ENABLE_FAIL_GIVE_UP then
+            -- Stop "dropped off unexpectedly" thrash (e.g. WonderCity keybind
+            -- gate reporting enabled=false forever). Clear managed so dropout
+            -- re-enable stops; user must fix the plugin menu / reload.
+            managed_by_us[plugin_name] = nil
+            owned[plugin_name] = nil
+            if not enable_fail_logged[plugin_name] or enable_fail_logged[plugin_name] ~= 'gave_up' then
+                log(string.format(
+                    'giving up enable of %s after %d tries — status.enabled never confirmed (check plugin Enable/keybind)',
+                    plugin_name, n))
+                enable_fail_logged[plugin_name] = 'gave_up'
+            end
+        elseif not enable_fail_logged[plugin_name] then
+            log('enable of ' .. plugin_name .. ' did not result in enabled status — will retry next tick')
+            enable_fail_logged[plugin_name] = true
+        end
     end
 end
 
@@ -765,15 +786,47 @@ local function plugin_disable(entry, opts)
     local plugin_name = resolver.normalize_plugin_global(entry.plugin)
     local p = _G[plugin_name]
     local quiet = opts and opts.quiet
+    -- ALWAYS finish ownership cleanup below, even when disable() throws.
+    -- BetterHelltide's disable() can error (lazy require of tasks.farm while
+    -- package.path is WarPigs') — a bare call aborted this function mid-way,
+    -- left managed_by_us set, then the enable phase thrash-re-enabled
+    -- ("plugin dropped off unexpectedly").
     if p then
+        local ok, err = true, nil
+        local used_hard = false
         if entry.disable then
-            entry.disable(p)
-            if not quiet then log('disabled ' .. entry.plugin) end
+            ok, err = pcall(entry.disable, p)
+        elseif type(p.hard_disable) == 'function' then
+            -- Prefer hard_disable so soft-pause bots (HelltideRevamped) fully
+            -- uncheck Enable and cannot keep farming while Pit/UC takes over.
+            used_hard = true
+            ok, err = pcall(p.hard_disable)
         elseif type(p.disable) == 'function' then
-            p.disable()
-            if not quiet then log('disabled ' .. entry.plugin) end
+            ok, err = pcall(p.disable)
+        end
+        if not ok then
+            log('disable() of ' .. plugin_name .. ' threw: ' .. tostring(err)
+                .. ' — clearing ownership anyway')
+            -- Remember so dropout re-enable can back off (see enable phase).
+            orchestrator._disable_threw_at = orchestrator._disable_threw_at or {}
+            orchestrator._disable_threw_at[plugin_name] = get_time_since_inject()
+        else
+            if orchestrator._disable_threw_at then
+                orchestrator._disable_threw_at[plugin_name] = nil
+            end
+            if not quiet then
+                if used_hard then
+                    log('hard-disabled ' .. entry.plugin)
+                else
+                    log('disabled ' .. entry.plugin)
+                end
+            end
         end
     end
+    -- Also force-off every other global in the same role (Lite + Revamped both
+    -- claim helltide). resolve_marker only tracks one name, so the sibling
+    -- would otherwise keep running through a Pit handoff.
+    disable_role_siblings(plugin_name)
     owned[plugin_name] = nil
     managed_by_us[plugin_name] = nil
     last_disabled_reason = last_enabled_reason[plugin_name]
@@ -815,13 +868,56 @@ end
 -- Build the set of all distinct plugin globals referenced by the map. Used
 -- by the state-based disable phase to enforce "off" on plugins WarPigs may
 -- not have enabled itself (manual toggle, stale state from before reload).
+-- Include every all_globals candidate for each role so e.g. HelltideRevamped
+-- is still torn down when Auto resolved to HelltideLitePlugin.
 local function get_managed_plugins()
     local set = {}
     for _, raw in pairs(orchestrator.quest_plugin_map) do
         local e = normalize(raw)
         if e.plugin then set[e.plugin] = e end
     end
+    for role_id, role in pairs(registry.roles) do
+        if role_id ~= 'alfred' and role_id ~= 'nav' and role.all_globals then
+            local sample = nil
+            for _, raw in pairs(orchestrator.quest_plugin_map) do
+                local e = normalize(raw)
+                if e.plugin then
+                    for _, g in ipairs(role.all_globals) do
+                        if g == e.plugin then sample = e; break end
+                    end
+                end
+                if sample then break end
+            end
+            for _, g in ipairs(role.all_globals) do
+                if not set[g] then
+                    set[g] = sample and {
+                        plugin       = g,
+                        disable_when = sample.disable_when,
+                        max_disable_defer_seconds = sample.max_disable_defer_seconds,
+                    } or { plugin = g }
+                end
+            end
+        end
+    end
     return set
+end
+
+-- Soft-paused plugins (HR disable keeps Enable checked) report status.enabled
+-- false, so is_plugin_on misses them. Treat "Enable still checked" as on for
+-- exclusive handoff teardown.
+local function plugin_needs_force_off(plugin_name)
+    if is_plugin_on(plugin_name) then return true end
+    local p = _G[plugin_name]
+    if not p then return false end
+    if type(p.status) == 'function' then
+        local ok, s = pcall(p.status)
+        if ok and type(s) == 'table' then
+            if s.paused == true then return true end
+            if s.enabled == true then return true end
+            if s.gui_enabled == true then return true end
+        end
+    end
+    return false
 end
 
 -- Death-handling state: log "died" once on transition so respawn loops don't
@@ -1130,7 +1226,7 @@ function orchestrator.tick()
     local active_warplan = next(wants) ~= nil
     for plugin_name, entry in pairs(managed) do
         if not wants[plugin_name] then
-            if not is_plugin_on(plugin_name) then
+            if not plugin_needs_force_off(plugin_name) then
                 if pending_disable[plugin_name] then
                     log('clearing stale pending_disable on ' .. plugin_name ..
                         ' — plugin is no longer reporting enabled')
@@ -1178,7 +1274,7 @@ function orchestrator.tick()
                     was_off[plugin_name] = true
                 end
             elseif active_warplan then
-                if is_plugin_on(plugin_name) then
+                if plugin_needs_force_off(plugin_name) then
                     local first_attempt = not was_off[plugin_name]
                     if first_attempt then
                         local target_name = next(wants)
@@ -1271,6 +1367,8 @@ function orchestrator.tick()
         enemies_near_player   = enemies_near_player,
         helltide_lingering_post_quest = helltide_lingering_post_quest,
         player_in_undercity       = in_undercity_zone,
+        player_in_pit             = in_pit_zone,
+        player_in_boss_lair       = in_boss_lair_zone,
     })
     if transition_result == 'limbo' then
         state_tracker.publish({
@@ -1332,6 +1430,37 @@ function orchestrator.tick()
             and last_enabled_reason[plugin_name]
             and last_enabled_reason[plugin_name] ~= reason
         local dropped_out = managed_by_us[plugin_name] and not is_plugin_on(plugin_name)
+        -- After a disable() throw we still clear managed_by_us, so dropped_out
+        -- is normally false. If the plugin later self-reports off while we
+        -- still think we manage it, skip thrash-re-enable for a short window.
+        if dropped_out and orchestrator._disable_threw_at
+            and orchestrator._disable_threw_at[plugin_name]
+        then
+            local threw_age = now - orchestrator._disable_threw_at[plugin_name]
+            if threw_age < 30.0 then
+                if not reenable_logged[plugin_name] then
+                    log(string.format(
+                        'skipping re-enable of %s — disable() threw %.0fs ago (plugin bug)',
+                        plugin_name, threw_age))
+                    reenable_logged[plugin_name] = true
+                end
+                dropped_out = false
+            end
+        end
+        if dropped_out and (enable_fail_count[plugin_name] or 0) >= ENABLE_FAIL_GIVE_UP then
+            dropped_out = false
+        end
+        -- After give-up, newly_wanted would still fire every tick (owned never
+        -- sticks). Only retry if the matched WarPlan pattern changed.
+        if (enable_fail_count[plugin_name] or 0) >= ENABLE_FAIL_GIVE_UP then
+            if reason_changed then
+                enable_fail_count[plugin_name] = nil
+                enable_fail_logged[plugin_name] = nil
+            else
+                newly_wanted = false
+                dropped_out = false
+            end
+        end
         if newly_wanted or reason_changed or dropped_out then
             -- Per-entry hard gate (e.g. InfernalHordes refuses to enable
             -- outside BSK while teleport transition is on). Evaluated AFTER
@@ -1487,8 +1616,10 @@ function orchestrator.stand_down()
     last_disable_time     = {}
     enable_blocked        = {}
     enable_fail_logged    = {}
+    enable_fail_count     = {}
     reenable_logged       = {}
     last_enabled_reason   = {}
+    orchestrator._disable_threw_at = {}
     transitions.reset()
     alfred_coord.reset_session()
     orchestrator._alfred_resume()

@@ -40,12 +40,15 @@ M.roles = {
         marker  = '__helltide__',
         default = 0,
         priority    = 40,
-        all_globals  = { 'HelltideLitePlugin', 'HelltideRevampedPlugin', 'BetterHelltidePlugin' },
-        auto_globals = { 'HelltideLitePlugin', 'HelltideRevampedPlugin', 'BetterHelltidePlugin' },
+        all_globals  = { 'HelltideRevampedPlugin', 'HelltideLitePlugin', 'BetterHelltidePlugin' },
+        -- Auto prefers Revamped when both are loaded. BetterHelltide pack often
+        -- sits on disk (or half-loads) and used to win Auto first, so WarPigs
+        -- enabled Lite while the user was running / debugging Revamped.
+        auto_globals = { 'HelltideRevampedPlugin', 'HelltideLitePlugin', 'BetterHelltidePlugin' },
         choices = {
             {
                 id     = 'auto',
-                label  = 'Auto (detect loaded)',
+                label  = 'Auto (prefer Revamped if both)',
                 global = nil,
             },
             {
@@ -119,13 +122,19 @@ M.roles = {
         auto_globals = { 'ReaperPlugin' },
         choices = {
             {
+                id     = 'reaper30',
+                label  = 'Reaper 3.0.pack',
+                global = 'ReaperPlugin',
+                folder = 'Reaper',
+            },
+            {
                 id     = 'auto',
-                label  = 'Auto (Reaper)',
+                label  = 'Auto (Reaper3.0.pack → folder)',
                 global = 'ReaperPlugin',
             },
             {
                 id     = 'reaper',
-                label  = 'Reaper',
+                label  = 'Reaper (open-source folder)',
                 global = 'ReaperPlugin',
                 folder = 'Reaper',
             },
@@ -243,7 +252,7 @@ M.global_labels = {
     BetterHelltidePlugin     = 'BetterHelltide',
     WonderCityPlugin         = 'Wonder City',
     InfernalHordesPlugin     = 'Infernal Horde',
-    ReaperPlugin             = 'Reaper',
+    ReaperPlugin             = 'Reaper 3.0.pack',
     BatmobilePlugin          = 'Batmobile / Chassis',
     FrigatePlugin            = 'Frigate',
     AlfredTheButlerPlugin    = 'Alfred',

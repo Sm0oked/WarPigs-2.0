@@ -1,5 +1,5 @@
 local plugin_label   = 'war_pigs'
-local plugin_version = '2.0.3'
+local plugin_version = '2.0.6'
 console.print('Lua Plugin - WarPigs - v' .. plugin_version)
 
 local registry = require 'core.plugin_registry'
@@ -63,10 +63,13 @@ gui.elements = {
 
 local PLUGIN_MENU_HINTS = {
     pit       = 'Pit bot for WarPlans pit quests and optional pit filler.',
-    helltide  = 'Helltide bot for WarPlans helltide quests.\nAuto detects HelltideRevamped or BetterHelltide (HelltideLitePlugin).',
+    helltide  = 'Helltide bot for WarPlans helltide quests.\n'
+        .. 'Auto prefers HelltideRevamped when both are loaded.\n'
+        .. 'Pick BetterHelltide explicitly to use the pack (HelltideLitePlugin).\n'
+        .. 'Disable the unused one in QQT Scripts to avoid handoff fights.',
     undercity = 'Undercity bot for WarPlans undercity quests.',
     horde     = 'Infernal Hordes bot for WarPlans horde quests.',
-    boss      = 'Boss-run bot for WarPlans boss lair quests.',
+    boss      = 'Boss-run bot for WarPlans boss lair quests.\nDefault: Reaper 3.0.pack (enable it in QQT Scripts).',
     nav       = 'Navigation for WarPigs town walks (Tyrael, crow).\nAuto prefers Batmobile, then Frigate.',
     alfred    = 'Alfred pack for stash/salvage between activities.',
 }
@@ -94,16 +97,10 @@ function gui.get_overlay_layout()
 end
 
 local function role_show_combo(role_id, advanced, installed_only)
-    if advanced then return true end
-    local status = resolver.status(role_id)
-    if status.loaded_count > 1 then return true end
-    if status.choice_id ~= 'auto' then return true end
-    local scripts_scan = require 'core.scripts_scan'
-    if scripts_scan.has_results() then
-        local choices = registry.get_live_choices(role_id, installed_only)
-        if #choices > 1 then return true end
-    end
-    return false
+    -- Always show every role dropdown. Hiding them in Auto mode made WarPigs
+    -- look like it "picked nothing" / the wrong bot (helltide pack vs folder,
+    -- Batmobile vs Frigate, Reaper pack vs folder) with no way to override.
+    return true
 end
 
 local combo_id_restored = {}
@@ -195,7 +192,7 @@ local function render_plugin_selection()
     if advanced then
         render_menu_header('Manual mode: choose each task plugin below.')
     else
-        render_menu_header('Auto mode: WarPigs uses loaded plugins per task.')
+        render_menu_header('Auto mode: each dropdown defaults to Auto; override any role explicitly.')
     end
 
     for _, role_id in ipairs(registry.menu_roles) do
@@ -219,8 +216,8 @@ local function render_plugin_selection()
     end
 
     gui.elements.plugin_advanced:render('Manual plugin selection',
-        'Off (default): auto-detect loaded plugins.\n' ..
-        'On: show every task dropdown for manual picks.')
+        'Off (default): dropdowns still show; leave roles on Auto to detect loaded plugins.\n'
+            .. 'On: same dropdowns — use when you want to force every pick explicitly.')
 
     gui.elements.plugin_scan_installed_only:render('Only show installed plugins',
         'After Scan entries: list choices whose folder exists on disk or .pack is present.\n' ..

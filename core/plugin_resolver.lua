@@ -63,8 +63,13 @@ function resolver.resolve_explicit_global(choice)
     local alt     = choice.alt_api or choice.alt_global
     if primary and plugin_table(primary) then return primary end
     if alt and plugin_table(alt) then return alt end
-    return primary or alt
+    -- Prefer returning nil over an unloaded name so Auto/manual does not
+    -- "want" a plugin that QQT never loaded (common with BetterHelltide*.pack
+    -- on disk but disabled in Scripts).
+    return nil
 end
+
+local auto_multi_logged = {}
 
 function resolver.resolve_global(role_id)
     local choice = resolver.get_choice(role_id)
@@ -72,23 +77,29 @@ function resolver.resolve_global(role_id)
     if choice.id == 'none' then return nil end
 
     if choice.id ~= 'auto' then
-        return resolver.resolve_explicit_global(choice)
+        local explicit = resolver.resolve_explicit_global(choice)
+        if explicit then return explicit end
+        -- Explicit pick not loaded — still return the intended global so
+        -- missing_enable_hint / menu can say which pack/folder to enable.
+        return choice.api_global or choice.global or choice.alt_api or choice.alt_global
     end
-    local detected = resolver.auto_detect(role_id)
-    if detected then return detected end
 
-    local cands = registry.role_candidate_globals(role_id)
-    if role_id == 'helltide' then
-        local ok, scan = pcall(require, 'core.scripts_scan')
-        if ok and type(scan.get_pack_files) == 'function' then
-            for _, pack in ipairs(scan.get_pack_files()) do
-                if resolver.is_betterhelltide_pack(pack) then
-                    return 'HelltideLitePlugin'
-                end
-            end
-        end
+    local loaded = resolver.loaded_globals(role_id)
+    if #loaded > 1 and not auto_multi_logged[role_id] then
+        auto_multi_logged[role_id] = true
+        local role = registry.get_role(role_id)
+        local label = (role and role.label) or role_id
+        console.print(string.format(
+            '[WarPigs] %s Auto: %d plugins loaded (%s) — using %s. '
+                .. 'Turn on Manual plugin selection (or pick explicitly) to force another.',
+            label, #loaded, table.concat(loaded, ', '), tostring(loaded[1])))
     end
-    return cands[1]
+    if loaded[1] then return loaded[1] end
+
+    -- Nothing loaded: do NOT invent a global just because a .pack / folder
+    -- exists on disk (BetterHelltide, Reaper, etc.). That made WarPigs enable
+    -- the wrong bot while another open-source plugin was the one actually running.
+    return nil
 end
 
 -- BetterHelltide ships under changing pack names (BetterHelltide-*.pack).
@@ -100,6 +111,38 @@ function resolver.is_betterhelltide_pack(pack_name)
         return pack_name:match('BetterHelltide') ~= nil
     end
     return catalog.folder_key_for_pack_basename(pack_name) == 'BetterHelltide'
+end
+
+function resolver.is_reaper_pack(pack_name)
+    if not pack_name or pack_name == '' then return false end
+    local ok, catalog = pcall(require, 'core.plugin_catalog')
+    if not ok or type(catalog.folder_key_for_pack_basename) ~= 'function' then
+        return pack_name:match('^[Rr]eaper') ~= nil
+    end
+    return catalog.folder_key_for_pack_basename(pack_name) == 'Reaper'
+end
+
+-- Returns first matching .pack basename for a catalog key (e.g. 'Reaper'),
+-- or nil. Uses cached scan results when available.
+function resolver.find_pack_on_disk(catalog_key)
+    if not catalog_key or catalog_key == '' then return nil end
+    local ok, scan = pcall(require, 'core.scripts_scan')
+    if not ok or type(scan.get_pack_files) ~= 'function' then return nil end
+    local ok_cat, catalog = pcall(require, 'core.plugin_catalog')
+    for _, pack in ipairs(scan.get_pack_files()) do
+        if catalog_key == 'BetterHelltide' and resolver.is_betterhelltide_pack(pack) then
+            return pack
+        end
+        if catalog_key == 'Reaper' and resolver.is_reaper_pack(pack) then
+            return pack
+        end
+        if ok_cat and type(catalog.folder_key_for_pack_basename) == 'function'
+            and catalog.folder_key_for_pack_basename(pack) == catalog_key
+        then
+            return pack
+        end
+    end
+    return nil
 end
 
 function resolver.helltide_lite_plugin()
@@ -125,13 +168,22 @@ end
 function resolver.missing_enable_hint(global_name)
     if not global_name or global_name == '' then return nil end
     local ok, scan = pcall(require, 'core.scripts_scan')
-    if (global_name == 'HelltideLitePlugin' or global_name == 'BetterHelltidePlugin')
-        and ok and type(scan.get_pack_files) == 'function'
-    then
-        for _, pack in ipairs(scan.get_pack_files()) do
-            if resolver.is_betterhelltide_pack(pack) then
-                return 'enable ' .. pack .. ' in QQT Scripts'
+    if (global_name == 'HelltideLitePlugin' or global_name == 'BetterHelltidePlugin') then
+        local pack = resolver.find_pack_on_disk('BetterHelltide')
+        if pack then return 'enable ' .. pack .. ' in QQT Scripts' end
+    end
+    if global_name == 'ReaperPlugin' then
+        local pack = resolver.find_pack_on_disk('Reaper')
+        local p = plugin_table('ReaperPlugin')
+        if p and (p.source == 'folder' or p.version == '2.6') then
+            if pack then
+                return 'DISABLE Reaper folder + enable ' .. pack .. ' in QQT Scripts, then reload'
             end
+            return 'DISABLE Reaper folder; enable Reaper3.0.pack in QQT Scripts, then reload'
+        end
+        if pack then return 'enable ' .. pack .. ' in QQT Scripts' end
+        if ok and scan.has_folder and scan.has_folder('Reaper') then
+            return 'enable Reaper (folder) or Reaper3.0.pack in QQT Scripts'
         end
     end
     if global_name == 'InfernalHordesPlugin' and ok and scan.has_folder
@@ -280,6 +332,13 @@ local function validate_standard_role(role_id)
             if role_id == 'horde' then
                 return false, 'No infernal hordes plugin loaded (enable Infernal Horde in QQT Scripts)'
             end
+            if role_id == 'boss' then
+                local pack = resolver.find_pack_on_disk('Reaper')
+                if pack then
+                    return false, 'No boss plugin loaded (enable ' .. pack .. ' in QQT Scripts)'
+                end
+                return false, 'No boss plugin loaded (enable Reaper3.0.pack or Reaper folder in QQT Scripts)'
+            end
             return false, 'No ' .. label .. ' plugin loaded (' .. (registry.global_label(global) or global) .. ')'
         end
         return true
@@ -287,6 +346,13 @@ local function validate_standard_role(role_id)
 
     if choice.global and not resolver.is_loaded(choice.global) then
         return false, choice.label .. ' not loaded'
+    end
+
+    if role_id == 'boss' and choice.id == 'reaper30' then
+        local p = plugin_table('ReaperPlugin')
+        if p and (p.source == 'folder' or p.version == '2.6') then
+            return false, 'Reaper 3.0.pack selected but v2.6 folder is loaded — disable Reaper folder + enable Reaper3.0.pack, reload'
+        end
     end
 
     if not resolver.has_required_api(role_id) then
