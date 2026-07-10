@@ -136,23 +136,17 @@ M.roles = {
     nav = {
         label       = 'Navigation',
         default     = 0,
-        all_globals  = { 'NavCorePlugin', 'BatmobilePlugin', 'FrigatePlugin' },
-        auto_globals = { 'NavCorePlugin', 'BatmobilePlugin', 'FrigatePlugin' },
+        all_globals  = { 'BatmobilePlugin', 'FrigatePlugin' },
+        auto_globals = { 'BatmobilePlugin', 'FrigatePlugin' },
         choices = {
             {
                 id     = 'auto',
-                label  = 'Auto (NavCore → Batmobile → Frigate)',
+                label  = 'Auto (Batmobile → Frigate)',
                 global = nil,
             },
             {
-                id     = 'navcore',
-                label  = 'NavCore',
-                global = 'NavCorePlugin',
-                folder = 'NavCore',
-            },
-            {
                 id     = 'batmobile',
-                label  = 'Batmobile',
+                label  = 'Batmobile / Chassis',
                 global = 'BatmobilePlugin',
                 folder = 'Batmobile',
             },
@@ -164,37 +158,6 @@ M.roles = {
             },
         },
         required_api = { 'set_target', 'move' },
-    },
-
-    combat = {
-        label       = 'Combat rotation',
-        default     = 0,
-        all_apis     = { 'UNIVERSAL_ROTATION', 'BARBARIAN_ROTATION', 'WarlockScmurdPlugin', 'WARLOCK_ROTATION' },
-        auto_globals = { 'UNIVERSAL_ROTATION', 'BARBARIAN_ROTATION', 'WarlockScmurdPlugin' },
-        choices = {
-            {
-                id         = 'auto',
-                label      = 'Auto (Universal Rotation)',
-                api_global = 'UNIVERSAL_ROTATION',
-            },
-            {
-                id         = 'ww_barb',
-                label      = 'V1per WW Barb',
-                api_global = 'BARBARIAN_ROTATION',
-                folder     = 'rotation_barbarian',
-            },
-            {
-                id         = 'universal',
-                label      = 'Universal Rotation',
-                api_global = 'UNIVERSAL_ROTATION',
-                folder     = 'UniversalRotation',
-            },
-            {
-                id         = 'none',
-                label      = 'None (manual)',
-                api_global = nil,
-            },
-        },
     },
 
     alfred = {
@@ -253,7 +216,6 @@ M.settings_key = {
     horde     = 'plugin_horde',
     boss      = 'plugin_boss',
     nav       = 'plugin_nav',
-    combat    = 'plugin_combat',
     alfred    = 'plugin_alfred',
 }
 
@@ -282,12 +244,8 @@ M.global_labels = {
     WonderCityPlugin         = 'Wonder City',
     InfernalHordesPlugin     = 'Infernal Horde',
     ReaperPlugin             = 'Reaper',
-    BatmobilePlugin          = 'Batmobile',
+    BatmobilePlugin          = 'Batmobile / Chassis',
     FrigatePlugin            = 'Frigate',
-    UNIVERSAL_ROTATION       = 'Universal Rotation',
-    BARBARIAN_ROTATION       = 'V1per WW Barb',
-    WarlockScmurdPlugin      = 'Scmurd Warlock',
-    WARLOCK_ROTATION         = 'Scmurd Warlock',
     AlfredTheButlerPlugin    = 'Alfred',
     PLUGIN_alfred_the_butler = 'Alfred',
 }

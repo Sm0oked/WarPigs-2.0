@@ -82,13 +82,24 @@ function resolver.resolve_global(role_id)
         local ok, scan = pcall(require, 'core.scripts_scan')
         if ok and type(scan.get_pack_files) == 'function' then
             for _, pack in ipairs(scan.get_pack_files()) do
-                if pack:match('BetterHelltide') then
+                if resolver.is_betterhelltide_pack(pack) then
                     return 'HelltideLitePlugin'
                 end
             end
         end
     end
     return cands[1]
+end
+
+-- BetterHelltide ships under changing pack names (BetterHelltide-*.pack).
+-- Chassis.pack is a separate nav engine (exposes BatmobilePlugin) — not helltide.
+function resolver.is_betterhelltide_pack(pack_name)
+    if not pack_name or pack_name == '' then return false end
+    local ok, catalog = pcall(require, 'core.plugin_catalog')
+    if not ok or type(catalog.folder_key_for_pack_basename) ~= 'function' then
+        return pack_name:match('BetterHelltide') ~= nil
+    end
+    return catalog.folder_key_for_pack_basename(pack_name) == 'BetterHelltide'
 end
 
 function resolver.helltide_lite_plugin()
@@ -118,7 +129,7 @@ function resolver.missing_enable_hint(global_name)
         and ok and type(scan.get_pack_files) == 'function'
     then
         for _, pack in ipairs(scan.get_pack_files()) do
-            if pack:match('BetterHelltide') then
+            if resolver.is_betterhelltide_pack(pack) then
                 return 'enable ' .. pack .. ' in QQT Scripts'
             end
         end
@@ -170,20 +181,12 @@ end
 
 function resolver.get_plugin_instance(role_id)
     if role_id == 'alfred' then return alfred_instance() end
-    if role_id == 'combat' then return plugin_table(resolver.resolve_global('combat')) end
     return plugin_table(resolver.resolve_global(role_id))
 end
 
 function resolver.is_loaded(global_name)
     if global_name == 'HelltideLitePlugin' or global_name == 'BetterHelltidePlugin' then
         return type(resolver.helltide_lite_plugin()) == 'table'
-    end
-    if global_name == 'UNIVERSAL_ROTATION'
-        or global_name == 'BARBARIAN_ROTATION'
-        or global_name == 'WarlockScmurdPlugin'
-        or global_name == 'WARLOCK_ROTATION'
-    then
-        return type(plugin_table(global_name)) == 'table'
     end
     return plugin_table(global_name) ~= nil
 end
@@ -239,12 +242,7 @@ function resolver.nav_plugin_name()
     return resolver.resolve_global('nav')
 end
 
-function resolver.combat_api_name()
-    return resolver.resolve_global('combat')
-end
-
 function resolver.has_required_api(role_id)
-    if role_id == 'combat' then return true end
     local role = registry.get_role(role_id)
     if not role or not role.required_api then return true end
     local plugin = resolver.get_plugin_instance(role_id)
@@ -332,22 +330,6 @@ function resolver.validate_role(role_id)
         return true
     end
 
-    if role_id == 'combat' then
-        if choice.id == 'none' then return true end
-        if choice.id == 'auto' then
-            if not resolver.auto_detect('combat') then
-                return false, 'No combat rotation loaded (enable Universal Rotation, WW Barb, or Warlock)'
-            end
-            return true
-        end
-        if choice.api_global and not resolver.is_loaded(choice.api_global)
-            and not (choice.alt_api and resolver.is_loaded(choice.alt_api))
-        then
-            return false, choice.label .. ' not loaded'
-        end
-        return true
-    end
-
     return validate_standard_role(role_id)
 end
 
@@ -382,7 +364,7 @@ function resolver.stuck_recovery_disable_list()
 end
 
 function resolver.stuck_recovery_clear_target_list()
-    return { 'NavCorePlugin', 'BatmobilePlugin', 'FrigatePlugin' }
+    return { 'BatmobilePlugin', 'FrigatePlugin' }
 end
 
 return resolver

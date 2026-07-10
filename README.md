@@ -218,8 +218,7 @@ These folder names under `scripts/` are recognized when you click **Scan entries
 
 - `ArkhamAsylum`, `HelltideRevamped`, `BetterHelltide`, `WonderCity-2.0`
 - `Infernal Horde`, `Reaper`
-- `Batmobile`, `Frigate`, `NavCore`
-- `rotation_barbarian`, `UniversalRotation`, `Scmurd-Warlock`
+- `Batmobile`, `Frigate`, `Chassis` (nav via `BatmobilePlugin`)
 - `BetterAlfred`
 
 **Pack-only plugins** (no unpacked folder) are detected when a matching `*.pack` file sits in the `scripts/` root — see [Plugin scan & .pack files](#plugin-scan--pack-files).
@@ -238,7 +237,7 @@ Other folders with `main.lua` may appear if registered in the catalog.
 - **BetterHelltide:** enable `BetterHelltide-*.pack` in QQT Scripts; for explicit pack use, disable the open-source `HelltideRevamped` folder if both are present
 - Recommended support plugins:
   - **Alfred** (any supported variant) for stash/salvage between activities
-  - **Batmobile** or **Frigate** for town navigation
+  - **Chassis.pack** (or Batmobile / Frigate) for navigation — exposes `BatmobilePlugin`
   - **Universal Rotation** or a class rotation — enable yourself in QQT; activity bots use it as configured
   - **SilentRaven** (optional) for Tree of Whispers turn-ins
 

@@ -27,20 +27,14 @@ M.folders = {
     Reaper = {
         boss = { global = 'ReaperPlugin', label = 'Reaper' },
     },
-    NavCore = {
-        nav = { global = 'NavCorePlugin', label = 'NavCore' },
-    },
     Batmobile = {
-        nav = { global = 'BatmobilePlugin', label = 'Batmobile' },
+        nav = { global = 'BatmobilePlugin', label = 'Batmobile / Chassis' },
+    },
+    Chassis = {
+        nav = { global = 'BatmobilePlugin', label = 'Chassis' },
     },
     Frigate = {
         nav = { global = 'FrigatePlugin', label = 'Frigate' },
-    },
-    rotation_barbarian = {
-        combat = { api_global = 'BARBARIAN_ROTATION', label = 'V1per WW Barb' },
-    },
-    UniversalRotation = {
-        combat = { api_global = 'UNIVERSAL_ROTATION', label = 'Universal Rotation' },
     },
     BetterAlfred = {
         alfred = {
@@ -50,20 +44,13 @@ M.folders = {
             id         = 'scan_better_alfred',
         },
     },
-    ['Scmurd-Warlock'] = {
-        combat = {
-            api_global = 'WarlockScmurdPlugin',
-            alt_api    = 'WARLOCK_ROTATION',
-            label      = 'Scmurd Warlock',
-            id         = 'scan_warlock',
-        },
-    },
 }
 
 -- .pack basename (no extension) -> catalog folder_key used in M.folders
 M.pack_aliases = {
     ['BetterHelltide']           = 'BetterHelltide',
     ['BetterHelltide (3)']       = 'BetterHelltide',
+    ['Chassis']                  = 'Chassis',
     ['SteroidAlfredV2-1.1.3']    = 'BetterAlfred',
     ['SteroidAlfredV2-1.1.2']    = 'BetterAlfred',
     ['SteroidAlfredV2-1.1.1']    = 'BetterAlfred',
@@ -86,6 +73,7 @@ function M.folder_key_for_pack_basename(basename)
         return basename
     end
     if basename:match('^BetterHelltide') then return 'BetterHelltide' end
+    if basename:match('^Chassis') then return 'Chassis' end
     if basename:match('^SteroidAlfred') or basename:match('^SteroidUtils') then return 'BetterAlfred' end
     if basename:match('^Looteer') then return 'LooteerV3' end
     if basename:match('^HordeDev') then return 'Infernal Horde' end

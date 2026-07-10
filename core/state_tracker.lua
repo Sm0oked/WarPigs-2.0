@@ -32,7 +32,6 @@ local snapshot = {
     task          = nil,
     pit_filler    = false,
     gate_reason   = nil,
-    combat_managed = false,
     stuck         = {},
 }
 
@@ -203,7 +202,6 @@ function M.publish(ctx)
     snapshot.pit_filler        = ctx.pit_filler == true
     snapshot.gate_reason     = ctx.gate_reason
     snapshot.matched_reason  = matched_reason_copy
-    snapshot.combat_managed  = ctx.combat_managed == true
     snapshot.stuck           = stuck_watchdog.get_status()
 
     if phase ~= last_phase then
@@ -270,7 +268,6 @@ function M.publish_off(now)
     snapshot.pit_filler       = false
     snapshot.gate_reason      = nil
     snapshot.matched_reason   = {}
-    snapshot.combat_managed   = false
     last_phase                = M.PHASE.OFF
     write_state_file()
     last_file_write           = snapshot.updated_at
