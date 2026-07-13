@@ -3,7 +3,10 @@
 -- would otherwise circular-require and leave a broken cached gui module.
 
 local PLUGIN_LABEL   = 'war_pigs'
-local PLUGIN_VERSION = '2.0.6'
+local PLUGIN_VERSION = '2.0.7'
+
+-- Safe: plugin_registry requires nothing at load time (scan/catalog are lazy).
+local registry = require 'core.plugin_registry'
 
 local settings = {
     plugin_label    = PLUGIN_LABEL,
@@ -22,19 +25,16 @@ local settings = {
     stats_overlay_bg_alpha = 38,
     stats_overlay_border_alpha = 255,
     stats_overlay_font_size = 17,
-    -- Plugin selection (combo_box index, 0-based).
+    -- Plugin selection (combo_box index, 0-based). Undercity and Navigation
+    -- have no menu entry — those roles always resolve as Auto.
     plugin_pit       = 0,
     plugin_pit_choice = 'auto',
     plugin_helltide  = 0,
     plugin_helltide_choice = 'auto',
-    plugin_undercity = 0,
-    plugin_undercity_choice = 'auto',
     plugin_horde     = 0,
     plugin_horde_choice = 'auto',
     plugin_boss      = 0,
     plugin_boss_choice = 'reaper30',
-    plugin_nav       = 0,
-    plugin_nav_choice = 'auto',
     plugin_alfred    = 0,
     plugin_alfred_choice = 'auto',
     plugin_scan_installed_only = true,
@@ -82,11 +82,21 @@ settings.update_settings = function()
     settings.stats_overlay_font_size  = el.stats_overlay_font_size:get()
     settings.plugin_pit       = el.plugin_pit:get()
     settings.plugin_helltide  = el.plugin_helltide:get()
-    settings.plugin_undercity = el.plugin_undercity:get()
     settings.plugin_horde     = el.plugin_horde:get()
     settings.plugin_boss      = el.plugin_boss:get()
-    settings.plugin_nav       = el.plugin_nav:get()
     settings.plugin_alfred    = el.plugin_alfred:get()
+    -- QQT persists the combo indices above (hash-based) across reloads; the
+    -- *_choice ids are plain session state that resets to defaults on reload.
+    -- The resolver prefers the id, so derive it from the persisted index every
+    -- refresh — otherwise an explicit pick (e.g. BetterHelltide) silently acts
+    -- as the role default until the Plugin Selection menu is opened once.
+    for role_id, combo_key in pairs(registry.settings_key) do
+        local id_key = registry.settings_choice_id_key[role_id]
+        local choice = registry.choice_at_static(role_id, settings[combo_key])
+        if id_key and choice then
+            settings[id_key] = choice.id
+        end
+    end
     if el.plugin_scan_installed_only then
         settings.plugin_scan_installed_only = el.plugin_scan_installed_only:get()
     end

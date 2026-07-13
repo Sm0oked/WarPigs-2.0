@@ -1,6 +1,8 @@
 # WarPigs Orchestrator
 
-**Version 2.0.6** — WarPlans quest orchestrator for Diablo IV (QQT scripts).
+**Version 2.0.7** — WarPlans quest orchestrator for Diablo IV (QQT scripts).
+
+> **Need to add a new bot or quest yourself?** See **[HOW-TO-EDIT.md](HOW-TO-EDIT.md)** — a copy-paste guide written for non-programmers, with a double-click `check_syntax.bat` to verify edits before reloading.
 
 WarPigs watches your active WarPlans quests and automatically enables the right activity plugins (pit, helltide, undercity, hordes, boss lairs), handles town transitions (Alfred, SilentRaven, teleport). Each activity bot handles its own combat rotation.
 
@@ -17,12 +19,12 @@ Each WarPlans activity type maps to a **role**. WarPigs resolves that role to a 
 
 | Role                   | Typical plugins                                   | Global API                                                        |
 | ---------------------- | ------------------------------------------------- | ----------------------------------------------------------------- |
-| **Pit**                | Arkham Asylum                                     | `ArkhamAsylumPlugin`                                              |
+| **Pit**                | Pit 2.0 (ex Arkham Asylum)                        | `Pit2Plugin` / `ArkhamAsylumPlugin`                               |
 | **Helltide**           | HelltideRevamped, BetterHelltide                  | `HelltideRevampedPlugin`, `HelltideLitePlugin` (BetterHelltide pack) |
-| **Undercity**          | Wonder City                                       | `WonderCityPlugin`                                                |
+| **Undercity**          | Wonder City *(only option — no dropdown)*         | `WonderCityPlugin`                                                |
 | **Infernal Hordes**    | Infernal Horde                                    | `InfernalHordesPlugin`                                            |
 | **Boss lairs**         | Reaper folder **or** `Reaper3.0.pack`              | `ReaperPlugin`                                                    |
-| **Navigation**         | Batmobile, Frigate                                | `BatmobilePlugin`, `FrigatePlugin`                                |
+| **Navigation**         | Batmobile, Frigate *(auto-detected — no dropdown)* | `BatmobilePlugin`, `FrigatePlugin`                                |
 | **Alfred**             | Better Alfred, Steroid Alfred, Alfred The Butler  | `AlfredTheButlerPlugin` / `PLUGIN_alfred_the_butler`              |
 
 
@@ -54,7 +56,7 @@ Optional on-screen panel (position, opacity, font size). Works **independently**
 
 
 
-## Menu guide (v2.0.6)
+## Menu guide (v2.0.7)
 
 Open: **Z | War Pigs | Orchestrator**
 
@@ -68,8 +70,9 @@ Open: **Z | War Pigs | Orchestrator**
 ### Plugin Selection
 
 - **Scan entries** — Manually scan `scripts/` for plugin folders and `.pack` files (see [Plugin scan & .pack files](#plugin-scan--pack-files) below). Scan is wrapped in `pcall` so a failed scan will not crash the game.
-- **Only show installed plugins** — After a scan, filter which choices count as “installed” for status lines and auto-detect hints. Dropdown option lists stay **fixed** (never shrink) to avoid QQT combo crashes.
-- Auto status lines per task, or dropdowns when ambiguous / manual mode is on.
+- **Dropdowns:** Pit, Helltide, Infernal Hordes, Boss lairs, Alfred. Undercity has no dropdown (Wonder City is the only bot) and Navigation has no dropdown (WarPigs auto-detects Batmobile → Frigate for its own town walks; each activity bot drives its own navigation).
+- **Per-role status line** — Under every dropdown, a `->` line shows exactly which plugin global that role resolves to right now (loaded / NOT loaded with an enable hint / nothing loaded). This is what the orchestrator will enable on the next handoff.
+- **Check installs on disk** — After a scan, flags role picks whose plugin folder / `.pack` was not found on disk. Dropdown option lists stay **fixed** (never shrink) to avoid QQT combo crashes.
 - **Manual plugin selection** — Show all task dropdowns.
 - **Setup** warnings if a required plugin is not loaded.
 
@@ -128,6 +131,8 @@ main.lua
 
 
 ### Adding support for a new plugin
+
+**Non-programmers:** follow the step-by-step recipes in [HOW-TO-EDIT.md](HOW-TO-EDIT.md) instead. Short version for devs:
 
 1. Add the folder → role mapping in `core/plugin_catalog.lua`.
 2. Add a choice (and `auto_globals` entry if needed) in `core/plugin_registry.lua`.
@@ -231,7 +236,7 @@ If both are **enabled** in QQT, whichever loads last owns `ReaperPlugin` — kee
 
 These folder names under `scripts/` are recognized when you click **Scan entries**:
 
-- `ArkhamAsylum`, `HelltideRevamped`, `BetterHelltide`, `WonderCity-2.0`
+- `Pit2.0`, `HelltideRevamped`, `BetterHelltide`, `WonderCity-2.0`
 - `Infernal Horde`, `Reaper` (also **`Reaper3.0.pack`** in scripts root)
 - `Batmobile`, `Chassis`, `Frigate`, `BetterAlfred`
 
@@ -273,6 +278,18 @@ local st = WarPigsPlugin.status()
 
 
 ## Changelog
+
+### 2.0.7 (plugin choice survives reload)
+
+- **Fix: explicit plugin picks no longer revert to Auto after a script reload.** QQT persists the dropdown *index*, but the resolver preferred the session-only choice *id*, which reset to the role default on reload and was only re-synced when the Plugin Selection menu was opened. `settings.update_settings()` now derives the choice id from the persisted index every refresh, so a pick like BetterHelltide holds across reloads without touching the menu.
+- **Console + HUD warning when Auto resolves to nothing.** A WarPlans quest matching a role with no loaded plugin used to be silently ignored (warning only visible in the menu). Now logged once per role and shown as `MISSING PLUGIN` on the status line.
+- **Per-role resolved-status line** under every Plugin Selection dropdown: `-> <global>` (loaded), `NOT loaded` with the enable hint, or `nothing loaded for this role`; Auto notes when multiple plugins are loaded.
+- **"Only show installed plugins" replaced with "Check installs on disk"** — the old toggle had become a no-op after the 2.0.2 static-labels crash fix. The new one flags picks whose folder/`.pack` was missing in the last scan.
+- Removed a leftover `recent_clicks` global write in `stand_down()`.
+- **New: [HOW-TO-EDIT.md](HOW-TO-EDIT.md)** — plain-language editing recipes for non-developers (add a bot, add a boss quest, fix pack detection), plus `check_syntax.bat` (double-click to typo-check every `.lua` file before reloading in QQT).
+- **Removed the Undercity and Navigation dropdowns.** Undercity only has one bot (Wonder City — always used when loaded) and navigation is auto-detected (Batmobile → Frigate) for WarPigs' own town walks; activity bots choose their own navigation. Both roles still exist internally, so quests and handoffs are unaffected.
+- **Fix: barbarian Whirlwind cancelling WarPigs teleports (Frigate).** Frigate moves Whirlwind barbs by re-casting WW every tick (it even "whirls in place to maintain buff"), so WarPigs' one-shot channel stop before a teleport didn't hold — WW came back one tick later and cancelled the 5s Temis/warplan teleport channel, looping `TO_TEMIS timeout — retrying waypoint` while the barb spun in place. `stop_whirlwind_for_teleport` now also stops Frigate's long-path navigation and clears its target so the nav driver goes idle and nothing re-casts during the teleport. Applied before every teleport attempt and retry; barb-only bug since Frigate gates WW to barbarians.
+- **Workaround for BetterHelltide's broken teardown.** BetterHelltide's `disable()`/`hard_disable()` can throw a dead-require error (`module 'tasks.farm' not found` against a stale pack path). WarPigs now falls back to the other teardown function when one throws, and skips a function that threw a dead-require error for the rest of the session instead of re-hitting the same plugin bug on every handoff. If every teardown function is broken it manages the bot by ownership only and logs once (fix: reload scripts or switch the role's plugin).
 
 ### 2.0.6 (helltide Auto confusion → all roles)
 

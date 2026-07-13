@@ -180,6 +180,7 @@ end
 -- gui_ref: main.lua passes the loaded gui module so slider values are read
 -- directly each frame (same pattern as LayzTracker draw_offset_x/y).
 function M.render(gui_ref)
+    if not settings.enabled then return end
     local layout
     if gui_ref and type(gui_ref.get_overlay_layout) == 'function' then
         layout = gui_ref.get_overlay_layout()

@@ -1,5 +1,9 @@
 -- Maps scripts/ folder names to WarPigs plugin roles.
 -- The scanner finds folders; this catalog says what each folder is for.
+--
+-- ★ NON-DEVS: Recipe 1 Step 4 (new folder) and Recipe 3 (pack filename not
+--   detected) in HOW-TO-EDIT.md cover the two edits ever needed here.
+--   Run check_syntax.bat after editing, before reloading in QQT.
 
 local M = {}
 
@@ -7,6 +11,13 @@ local M = {}
 M.folders = {
     ArkhamAsylum = {
         pit = { global = 'ArkhamAsylumPlugin', label = 'Arkham Asylum' },
+    },
+    ['Pit2.0'] = {
+        pit = {
+            global     = 'Pit2Plugin',
+            alt_global = 'ArkhamAsylumPlugin',
+            label      = 'Pit 2.0',
+        },
     },
     HelltideRevamped = {
         helltide = { global = 'HelltideRevampedPlugin', label = 'HelltideRevamped' },

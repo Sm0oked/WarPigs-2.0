@@ -1,5 +1,5 @@
 local plugin_label   = 'war_pigs'
-local plugin_version = '2.0.6'
+local plugin_version = '2.0.7'
 console.print('Lua Plugin - WarPigs - v' .. plugin_version)
 
 local registry = require 'core.plugin_registry'
@@ -37,10 +37,8 @@ gui.elements = {
     keybind_toggle= keybind:new(0x0A, true, get_hash(plugin_label .. '_keybind_toggle')),
     plugin_pit       = create_plugin_combo('pit'),
     plugin_helltide  = create_plugin_combo('helltide'),
-    plugin_undercity = create_plugin_combo('undercity'),
     plugin_horde     = create_plugin_combo('horde'),
     plugin_boss      = create_plugin_combo('boss'),
-    plugin_nav       = create_plugin_combo('nav'),
     plugin_alfred    = create_plugin_combo('alfred'),
     plugin_advanced        = create_checkbox(false, 'plugin_advanced'),
     plugin_scan_installed_only = create_checkbox(true, 'plugin_scan_installed_only'),
@@ -61,26 +59,24 @@ gui.elements = {
     reset_session_stats     = create_checkbox(false, 'reset_session_stats'),
 }
 
+-- Undercity and Navigation have no dropdown: Wonder City is the only
+-- undercity bot, and navigation is auto-detected (Batmobile -> Frigate).
 local PLUGIN_MENU_HINTS = {
     pit       = 'Pit bot for WarPlans pit quests and optional pit filler.',
     helltide  = 'Helltide bot for WarPlans helltide quests.\n'
         .. 'Auto prefers HelltideRevamped when both are loaded.\n'
         .. 'Pick BetterHelltide explicitly to use the pack (HelltideLitePlugin).\n'
         .. 'Disable the unused one in QQT Scripts to avoid handoff fights.',
-    undercity = 'Undercity bot for WarPlans undercity quests.',
     horde     = 'Infernal Hordes bot for WarPlans horde quests.',
     boss      = 'Boss-run bot for WarPlans boss lair quests.\nDefault: Reaper 3.0.pack (enable it in QQT Scripts).',
-    nav       = 'Navigation for WarPigs town walks (Tyrael, crow).\nAuto prefers Batmobile, then Frigate.',
     alfred    = 'Alfred pack for stash/salvage between activities.',
 }
 
 local PLUGIN_MENU_LABELS = {
     pit       = 'Pit',
     helltide  = 'Helltide',
-    undercity = 'Undercity',
     horde     = 'Infernal Hordes',
     boss      = 'Boss lairs',
-    nav       = 'Navigation',
     alfred    = 'Alfred',
 }
 
@@ -96,11 +92,39 @@ function gui.get_overlay_layout()
     }
 end
 
-local function role_show_combo(role_id, advanced, installed_only)
-    -- Always show every role dropdown. Hiding them in Auto mode made WarPigs
-    -- look like it "picked nothing" / the wrong bot (helltide pack vs folder,
-    -- Batmobile vs Frigate, Reaper pack vs folder) with no way to override.
-    return true
+-- One compact line under each dropdown: what the current pick resolves to
+-- right now. This is the ground truth the orchestrator uses on the next
+-- handoff, so the user can see at a glance which bot each role will run.
+local function render_role_status(role_id, installed_only)
+    local status = resolver.status(role_id)
+    local line
+    if status.resolved and status.resolved_loaded then
+        line = '-> ' .. status.resolved
+        if status.choice_id == 'auto' and status.loaded_count > 1 then
+            line = line .. string.format('  (%d loaded - Auto uses first)', status.loaded_count)
+        end
+    elseif status.resolved then
+        local hint = resolver.missing_enable_hint(status.resolved)
+        line = '-> ' .. status.resolved .. ' NOT loaded'
+        if hint and hint ~= '' then
+            line = line .. ' - ' .. hint
+        end
+    else
+        line = '-> nothing loaded for this role'
+    end
+    if installed_only then
+        local scan_mod = require 'core.scripts_scan'
+        if scan_mod.has_results() then
+            local choice = resolver.get_choice(role_id)
+            if choice and choice.folder then
+                local catalog = require 'core.plugin_catalog'
+                if not catalog.installed_scan_hit(choice.folder, scan_mod.get_folders()) then
+                    line = line .. '  [not found on disk in last scan]'
+                end
+            end
+        end
+    end
+    render_menu_header('      ' .. line)
 end
 
 local combo_id_restored = {}
@@ -196,22 +220,11 @@ local function render_plugin_selection()
     end
 
     for _, role_id in ipairs(registry.menu_roles) do
-        local status = resolver.status(role_id)
-        local el     = gui.elements['plugin_' .. role_id]
-        local label  = PLUGIN_MENU_LABELS[role_id] or role_id
-        local show_combo = role_show_combo(role_id, advanced, installed_only)
-
-        if el and show_combo then
+        local el    = gui.elements['plugin_' .. role_id]
+        local label = PLUGIN_MENU_LABELS[role_id] or role_id
+        if el then
             render_role_combo(role_id, el, label, PLUGIN_MENU_HINTS[role_id] or '')
-        elseif status.resolved_loaded then
-            render_menu_header(label .. ':  ' .. (status.resolved_label or status.resolved))
-        elseif status.resolved then
-            local note = ' — not loaded'
-            if role_id == 'helltide' and not status.resolved_loaded then
-                local hint = resolver.missing_enable_hint(status.resolved)
-                if hint and hint ~= '' then note = ' — ' .. hint end
-            end
-            render_menu_header(label .. ':  ' .. (status.resolved_label or status.resolved) .. note)
+            render_role_status(role_id, installed_only)
         end
     end
 
@@ -219,10 +232,10 @@ local function render_plugin_selection()
         'Off (default): dropdowns still show; leave roles on Auto to detect loaded plugins.\n'
             .. 'On: same dropdowns — use when you want to force every pick explicitly.')
 
-    gui.elements.plugin_scan_installed_only:render('Only show installed plugins',
-        'After Scan entries: list choices whose folder exists on disk or .pack is present.\n' ..
-        'Before scan: only plugins currently loaded in QQT are listed.\n' ..
-        'Off shows the full static list.')
+    gui.elements.plugin_scan_installed_only:render('Check installs on disk',
+        'After Scan entries: flag role picks whose plugin folder / .pack was\n' ..
+        'not found on disk ("[not found on disk in last scan]").\n' ..
+        'Dropdown lists always stay full — they never shrink (combo crash safety).')
 
     local summary = registry.scan_summary()
     if summary.scanned then
@@ -312,7 +325,7 @@ gui.render = function()
         'managed plugins, teleport to Temis, and restart the next quest cleanly.')
 
     gui.elements.show_session_stats_hud:render('Session stats overlay',
-        'Show a stats panel on screen. Works independently of the Enable toggle.')
+        'Show a stats panel on screen while WarPigs Enable is on.')
 
     if gui.elements.stats_overlay_tree:push('Overlay appearance') then
         gui.elements.stats_overlay_pos_x:render('Position X', 'Panel left edge in pixels.')

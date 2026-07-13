@@ -86,7 +86,8 @@ local render_err_logged = false
 local render_pulse = function()
     settings:update_settings()
 
-    if settings.show_session_stats_hud then
+    -- Hide session overlay when WarPigs is disabled (main toggle off).
+    if settings.enabled and settings.show_session_stats_hud then
         local ok, err = pcall(session_stats.render, gui)
         if not ok and not render_err_logged then
             render_err_logged = true

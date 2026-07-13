@@ -484,6 +484,8 @@ orchestrator.quest_plugin_map = {
     -- Boss runs via Reaper. boss_id must match an entry in
     -- Reaper-main/data/enums.lua boss_zones (duriel, andariel, varshan,
     -- grigoire, zir, beast, harbinger, urivar, butcher, belial).
+    -- ★ NON-DEVS: to add a new boss quest, copy one line below and change the
+    --   quest name + boss id — see Recipe 2 in HOW-TO-EDIT.md.
     --
     -- Quest-name suffixes are confirmed where marked; the rest are best
     -- guesses based on the "Andariel" and "Harby" precedents. Wrong guesses
@@ -520,12 +522,18 @@ end
 
 local function normalize(entry)
     if type(entry) == 'string' then
-        return { plugin = resolve_map_plugin(entry) }
+        return {
+            plugin  = resolve_map_plugin(entry),
+            role_id = registry.role_for_marker(entry),
+        }
     end
     if type(entry) == 'table' and entry.plugin then
         local resolved = {}
         for k, v in pairs(entry) do resolved[k] = v end
-        resolved.plugin = resolve_map_plugin(entry.plugin)
+        resolved.plugin  = resolve_map_plugin(entry.plugin)
+        -- Keep the role so the tick loop can tell "marker resolved to nil
+        -- (nothing loaded for the role)" apart from a plain task entry.
+        resolved.role_id = registry.role_for_marker(entry.plugin)
         return resolved
     end
     return entry
@@ -654,6 +662,69 @@ local function we_manage(plugin_name)
     return owned[plugin_name] == true or managed_by_us[plugin_name] == true
 end
 
+-- ── teardown workaround (BetterHelltide dead-require) ───────────────────────
+-- BetterHelltide v1.7.x: its disable()/hard_disable() can throw
+-- "module 'tasks.farm' not found" — the pack lazy-requires a module against a
+-- dead package.path entry, and the throw aborts its own teardown half-way.
+-- Generic containment for any plugin with a throwing teardown:
+--   * prefer hard_disable, fall back to disable() when the first call throws
+--   * a function that threw a dead-require error is skipped for the rest of
+--     the session (the bug is deterministic — retrying just re-breaks every
+--     handoff and can leave the bot half-torn-down)
+--   * when every teardown function is broken, manage by ownership only and
+--     say so once (fix is reload scripts / switch the role's plugin).
+local broken_teardown      = {}  -- plugin_name -> { [fn_name] = true }
+local teardown_err_logged  = {}  -- plugin_name .. '.' .. fn_name -> true
+local teardown_gave_up_log = {}  -- plugin_name -> true
+
+local function is_dead_require_error(err)
+    if type(err) ~= 'string' then return false end
+    return (err:find("module '", 1, true) ~= nil and err:find('not found', 1, true) ~= nil)
+        or err:find("no file '", 1, true) ~= nil
+end
+
+-- Returns 'ok', fn_name  |  'failed', last_err  |  'gave_up'  |  'none'.
+local function try_teardown(plugin_name, p)
+    local broken = broken_teardown[plugin_name]
+    local attempted, last_err, have_any = false, nil, false
+    for _, fn_name in ipairs({ 'hard_disable', 'disable' }) do
+        if type(p[fn_name]) == 'function' then
+            have_any = true
+            if not (broken and broken[fn_name]) then
+                attempted = true
+                local ok, err = pcall(p[fn_name])
+                if ok then return 'ok', fn_name end
+                last_err = err
+                if is_dead_require_error(err) then
+                    broken_teardown[plugin_name] = broken_teardown[plugin_name] or {}
+                    broken_teardown[plugin_name][fn_name] = true
+                    broken = broken_teardown[plugin_name]
+                    log(string.format(
+                        '%s.%s() threw a dead-require error (plugin bug) — skipping it for the rest of this session, trying next teardown',
+                        plugin_name, fn_name))
+                else
+                    local key = plugin_name .. '.' .. fn_name
+                    if not teardown_err_logged[key] then
+                        teardown_err_logged[key] = true
+                        log(string.format('%s.%s() threw: %s — trying next teardown',
+                            plugin_name, fn_name, tostring(err)))
+                    end
+                end
+            end
+        end
+    end
+    if not have_any then return 'none' end
+    if not attempted then
+        if not teardown_gave_up_log[plugin_name] then
+            teardown_gave_up_log[plugin_name] = true
+            log(plugin_name .. ': every teardown function throws (plugin bug) — '
+                .. 'managing by ownership only. Reload scripts, or switch this role to another plugin.')
+        end
+        return 'gave_up'
+    end
+    return 'failed', last_err
+end
+
 -- Turn off other globals in the same role (e.g. HR when BetterHelltide is selected).
 -- Always prefer hard_disable. Soft-paused HR reports enabled=false but Enable
 -- stays checked — is_plugin_on misses it, so we also tear down paused siblings.
@@ -682,11 +753,7 @@ local function disable_role_siblings(plugin_name)
                         end
                         if needs_off then
                             log('disabling ' .. g .. ' — sibling of ' .. plugin_name)
-                            if type(p.hard_disable) == 'function' then
-                                pcall(p.hard_disable)
-                            elseif type(p.disable) == 'function' then
-                                pcall(p.disable)
-                            end
+                            try_teardown(g, p)
                             owned[g]         = nil
                             managed_by_us[g] = nil
                         end
@@ -794,19 +861,30 @@ local function plugin_disable(entry, opts)
     if p then
         local ok, err = true, nil
         local used_hard = false
+        local gave_up   = false
         if entry.disable then
             ok, err = pcall(entry.disable, p)
-        elseif type(p.hard_disable) == 'function' then
-            -- Prefer hard_disable so soft-pause bots (HelltideRevamped) fully
-            -- uncheck Enable and cannot keep farming while Pit/UC takes over.
-            used_hard = true
-            ok, err = pcall(p.hard_disable)
-        elseif type(p.disable) == 'function' then
-            ok, err = pcall(p.disable)
+        else
+            -- try_teardown prefers hard_disable (soft-pause bots like
+            -- HelltideRevamped must fully uncheck Enable), falls back to
+            -- disable() when the first call throws, and skips functions that
+            -- threw a dead-require error earlier this session (BetterHelltide
+            -- workaround). 'none' (no teardown surface) keeps ok = true.
+            local status, detail = try_teardown(plugin_name, p)
+            if status == 'ok' then
+                used_hard = (detail == 'hard_disable')
+            elseif status == 'failed' then
+                ok, err = false, detail
+            elseif status == 'gave_up' then
+                ok, gave_up = false, true
+            end
         end
         if not ok then
-            log('disable() of ' .. plugin_name .. ' threw: ' .. tostring(err)
-                .. ' — clearing ownership anyway')
+            if not gave_up then
+                -- gave_up already logged once inside try_teardown.
+                log('disable() of ' .. plugin_name .. ' threw: ' .. tostring(err)
+                    .. ' — clearing ownership anyway')
+            end
             -- Remember so dropout re-enable can back off (see enable phase).
             orchestrator._disable_threw_at = orchestrator._disable_threw_at or {}
             orchestrator._disable_threw_at[plugin_name] = get_time_since_inject()
@@ -1077,6 +1155,15 @@ function orchestrator.tick()
             elseif not wants[entry.plugin] then
                 wants[entry.plugin]          = entry
                 matched_reason[entry.plugin] = pattern
+            end
+        elseif matched and entry.role_id then
+            -- Role marker resolved to nil: the pick is Auto and no plugin for
+            -- this role is loaded in QQT. Warn once (console) and surface
+            -- MISSING_PLUGIN on the HUD instead of silently ignoring the quest.
+            local fallback = registry.role_candidate_globals(entry.role_id)[1]
+            if fallback then
+                warn_missing_plugin(fallback, pattern)
+                matched_blocked[pattern] = fallback
             end
         end
     end
@@ -1619,6 +1706,9 @@ function orchestrator.stand_down()
     enable_fail_count     = {}
     reenable_logged       = {}
     last_enabled_reason   = {}
+    broken_teardown       = {}
+    teardown_err_logged   = {}
+    teardown_gave_up_log  = {}
     orchestrator._disable_threw_at = {}
     transitions.reset()
     alfred_coord.reset_session()
@@ -1627,7 +1717,6 @@ function orchestrator.stand_down()
     turn_in_was_matched      = false
     had_turn_in_complete     = false
     pit_filler_active_logged = false
-    recent_clicks            = {}
     last_disabled_plugin     = nil
     last_disabled_at         = -math.huge
     last_disabled_reason     = nil

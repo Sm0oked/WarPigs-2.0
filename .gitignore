@@ -1,0 +1,8 @@
+# Runtime state written while the bot runs — machine-specific, never commit.
+data/*.txt
+
+# Local editor/assistant settings
+.claude/
+
+# Backup files made while editing (see HOW-TO-EDIT.md)
+*.bak

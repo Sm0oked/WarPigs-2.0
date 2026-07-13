@@ -1,5 +1,12 @@
 -- Plugin roles WarPigs can assign per activity / support task.
 -- Each role lists menu choices; resolver turns the user's pick into a _G global.
+--
+-- ★ NON-DEVS: to add a new bot as a dropdown option, follow Recipe 1 in
+--   HOW-TO-EDIT.md (in the WarPigs folder). Rules that keep saves/menus safe:
+--     * Add new `choices` entries at the END of a role's list only.
+--     * NEVER delete or reorder existing `choices` entries.
+--     * Also add the new global to that role's all_globals AND auto_globals.
+--   Run check_syntax.bat after editing, before reloading in QQT.
 
 local M = {}
 
@@ -17,19 +24,26 @@ M.roles = {
         marker      = '__pit__',
         default     = 0,
         priority    = 100,
-        all_globals  = { 'ArkhamAsylumPlugin' },
-        auto_globals = { 'ArkhamAsylumPlugin' },
+        all_globals  = { 'Pit2Plugin', 'ArkhamAsylumPlugin' },
+        -- Prefer Pit2Plugin only — ArkhamAsylumPlugin is the same table (legacy alias).
+        auto_globals = { 'Pit2Plugin' },
         choices = {
             {
                 id     = 'auto',
-                label  = 'Auto (Arkham Asylum)',
-                global = 'ArkhamAsylumPlugin',
+                label  = 'Auto (Pit 2.0)',
+                global = 'Pit2Plugin',
+            },
+            {
+                id     = 'pit2',
+                label  = 'Pit 2.0',
+                global = 'Pit2Plugin',
+                folder = 'Pit2.0',
             },
             {
                 id     = 'arkham',
-                label  = 'Arkham Asylum',
+                label  = 'Arkham Asylum (legacy alias)',
                 global = 'ArkhamAsylumPlugin',
-                folder = 'ArkhamAsylum',
+                folder = 'Pit2.0',
             },
         },
         required_api = { 'enable', 'disable' },
@@ -218,13 +232,16 @@ M.roles = {
 }
 
 -- role_id -> settings field on core.settings (combo_box index, 0-based).
+-- undercity and nav have NO menu entry on purpose: undercity has only one
+-- bot (Wonder City) and navigation is auto-detected (Batmobile -> Frigate)
+-- for WarPigs' own town walks. With no settings key, the resolver falls back
+-- to each role's first choice (Auto) — do not add them back here without
+-- also re-adding their gui elements.
 M.settings_key = {
     pit       = 'plugin_pit',
     helltide  = 'plugin_helltide',
-    undercity = 'plugin_undercity',
     horde     = 'plugin_horde',
     boss      = 'plugin_boss',
-    nav       = 'plugin_nav',
     alfred    = 'plugin_alfred',
 }
 
@@ -232,21 +249,20 @@ M.settings_key = {
 M.settings_choice_id_key = {
     pit       = 'plugin_pit_choice',
     helltide  = 'plugin_helltide_choice',
-    undercity = 'plugin_undercity_choice',
     horde     = 'plugin_horde_choice',
     boss      = 'plugin_boss_choice',
-    nav       = 'plugin_nav_choice',
     alfred    = 'plugin_alfred_choice',
 }
 
--- Roles validated in the Plugin Selection menu (in order).
+-- Roles shown/validated in the Plugin Selection menu (in order).
 M.menu_roles = {
-    'pit', 'helltide', 'undercity', 'horde', 'boss', 'nav', 'alfred',
+    'pit', 'helltide', 'horde', 'boss', 'alfred',
 }
 
 -- Friendly name shown in the compact auto-detect status lines.
 M.global_labels = {
-    ArkhamAsylumPlugin       = 'Arkham Asylum',
+    Pit2Plugin               = 'Pit 2.0',
+    ArkhamAsylumPlugin       = 'Pit 2.0',
     HelltideRevampedPlugin   = 'HelltideRevamped',
     HelltideLitePlugin       = 'BetterHelltide',
     BetterHelltidePlugin     = 'BetterHelltide',
