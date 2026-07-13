@@ -1,6 +1,6 @@
 # WarPigs Orchestrator
 
-**Version 2.0.7** — WarPlans quest orchestrator for Diablo IV (QQT scripts).
+**Version 2.0.8** — WarPlans quest orchestrator for Diablo IV (QQT scripts).
 
 > **Need to add a new bot or quest yourself?** See **[HOW-TO-EDIT.md](HOW-TO-EDIT.md)** — a copy-paste guide written for non-programmers, with a double-click `check_syntax.bat` to verify edits before reloading.
 
@@ -278,6 +278,11 @@ local st = WarPigsPlugin.status()
 
 
 ## Changelog
+
+### 2.0.8 (BetterHelltide enable/disable loop)
+
+- **Fix: enable → instant-disable loop when BetterHelltide is the helltide pick.** `BetterHelltidePlugin` is an *alias* global for `HelltideLitePlugin` (same table). The disable phase tracked the alias as a separate managed plugin, so one tick after enabling HelltideLite it saw "an enabled plugin that isn't wanted" and force-disabled the plugin it had just enabled — enable → phantom disable → 5s cooldown → re-enable, forever. Managed-plugin tracking and sibling teardown now compare **normalized** globals, so an alias is never treated as an unwanted plugin or a sibling of itself.
+- **Fix: broken-teardown plugins starving the enable gate.** When every teardown function on a plugin throws (BetterHelltide dead-require), each per-tick force-disable attempt still refreshed the 5s post-disable cooldown and re-armed the teleport — the log showed `post-disable cooldown (5.0s left)` for minutes. Plugins whose teardown is known-hopeless are now skipped by the force-off pass (already logged once; managed by ownership only).
 
 ### 2.0.7 (plugin choice survives reload)
 

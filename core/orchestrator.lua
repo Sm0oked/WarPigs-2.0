@@ -725,6 +725,27 @@ local function try_teardown(plugin_name, p)
     return 'failed', last_err
 end
 
+-- True when the plugin exposes teardown functions but every one of them has
+-- thrown (dead-require). Force-disabling such a plugin every tick is pure
+-- churn: each attempt refreshes last_disable_time and re-arms the teleport,
+-- which starves the enable gate forever (observed with BetterHelltide: the
+-- 5s post-disable cooldown showed "5.0s left" for minutes on end). On the
+-- orchestrator table so tick() reaches it through an existing upvalue.
+orchestrator._teardown_hopeless = function (plugin_name)
+    local broken = broken_teardown[plugin_name]
+    if not broken then return false end
+    local p = _G[plugin_name]
+    if type(p) ~= 'table' then return false end
+    local have_any = false
+    for _, fn_name in ipairs({ 'hard_disable', 'disable' }) do
+        if type(p[fn_name]) == 'function' then
+            have_any = true
+            if not broken[fn_name] then return false end
+        end
+    end
+    return have_any
+end
+
 -- Turn off other globals in the same role (e.g. HR when BetterHelltide is selected).
 -- Always prefer hard_disable. Soft-paused HR reports enabled=false but Enable
 -- stays checked — is_plugin_on misses it, so we also tear down paused siblings.
@@ -737,7 +758,12 @@ local function disable_role_siblings(plugin_name)
             end
             if in_role then
                 for _, g in ipairs(role.all_globals) do
-                    if g ~= plugin_name then
+                    -- Compare NORMALIZED names: BetterHelltidePlugin is an
+                    -- alias of HelltideLitePlugin (same table), not a real
+                    -- sibling — tearing it down would kill the plugin that
+                    -- was just enabled.
+                    local g_norm = resolver.normalize_plugin_global(g)
+                    if g_norm ~= plugin_name then
                         local p = _G[g]
                         if not p then goto continue end
                         local needs_off = is_plugin_on(g)
@@ -751,11 +777,11 @@ local function disable_role_siblings(plugin_name)
                                 end
                             end
                         end
-                        if needs_off then
+                        if needs_off and not orchestrator._teardown_hopeless(g_norm) then
                             log('disabling ' .. g .. ' — sibling of ' .. plugin_name)
-                            try_teardown(g, p)
-                            owned[g]         = nil
-                            managed_by_us[g] = nil
+                            try_teardown(g_norm, p)
+                            owned[g_norm]         = nil
+                            managed_by_us[g_norm] = nil
                         end
                         ::continue::
                     end
@@ -967,12 +993,19 @@ local function get_managed_plugins()
                 if sample then break end
             end
             for _, g in ipairs(role.all_globals) do
-                if not set[g] then
-                    set[g] = sample and {
-                        plugin       = g,
+                -- Key by NORMALIZED global. BetterHelltidePlugin normalizes
+                -- to HelltideLitePlugin (alias, same table); a separate alias
+                -- entry here made the disable phase see "an enabled plugin
+                -- that isn't wanted" one tick after enabling HelltideLite —
+                -- and force-disable the plugin it had just enabled, forever
+                -- (enable → phantom disable → 5s cooldown → re-enable loop).
+                local key = resolver.normalize_plugin_global(g)
+                if not set[key] then
+                    set[key] = sample and {
+                        plugin       = key,
                         disable_when = sample.disable_when,
                         max_disable_defer_seconds = sample.max_disable_defer_seconds,
-                    } or { plugin = g }
+                    } or { plugin = key }
                 end
             end
         end
@@ -1361,7 +1394,13 @@ function orchestrator.tick()
                     was_off[plugin_name] = true
                 end
             elseif active_warplan then
-                if plugin_needs_force_off(plugin_name) then
+                -- Skip plugins whose every teardown function throws (e.g.
+                -- BetterHelltide dead-require): re-"disabling" them each tick
+                -- does nothing to the plugin but refreshes last_disable_time
+                -- and re-arms the teleport, starving the enable gate forever.
+                if plugin_needs_force_off(plugin_name)
+                    and not orchestrator._teardown_hopeless(plugin_name)
+                then
                     local first_attempt = not was_off[plugin_name]
                     if first_attempt then
                         local target_name = next(wants)

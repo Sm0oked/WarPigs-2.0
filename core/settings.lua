@@ -3,7 +3,7 @@
 -- would otherwise circular-require and leave a broken cached gui module.
 
 local PLUGIN_LABEL   = 'war_pigs'
-local PLUGIN_VERSION = '2.0.7'
+local PLUGIN_VERSION = '2.0.8'
 
 -- Safe: plugin_registry requires nothing at load time (scan/catalog are lazy).
 local registry = require 'core.plugin_registry'
