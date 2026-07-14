@@ -24,26 +24,21 @@ M.roles = {
         marker      = '__pit__',
         default     = 0,
         priority    = 100,
-        all_globals  = { 'Pit2Plugin', 'ArkhamAsylumPlugin' },
-        -- Prefer Pit2Plugin only — ArkhamAsylumPlugin is the same table (legacy alias).
-        auto_globals = { 'Pit2Plugin' },
+        -- Pit bot is Arkham Asylum. Pit2.0 on disk is the same plugin (see catalog alias).
+        all_globals  = { 'ArkhamAsylumPlugin', 'Pit2Plugin' },
+        auto_globals = { 'ArkhamAsylumPlugin', 'Pit2Plugin' },
         choices = {
             {
                 id     = 'auto',
-                label  = 'Auto (Pit 2.0)',
-                global = 'Pit2Plugin',
-            },
-            {
-                id     = 'pit2',
-                label  = 'Pit 2.0',
-                global = 'Pit2Plugin',
-                folder = 'Pit2.0',
+                label  = 'Auto (Arkham Asylum)',
+                global = nil,
             },
             {
                 id     = 'arkham',
-                label  = 'Arkham Asylum (legacy alias)',
+                label  = 'Arkham Asylum',
                 global = 'ArkhamAsylumPlugin',
-                folder = 'Pit2.0',
+                alt_global = 'Pit2Plugin',
+                folder = 'ArkhamAsylum',
             },
         },
         required_api = { 'enable', 'disable' },
@@ -261,8 +256,8 @@ M.menu_roles = {
 
 -- Friendly name shown in the compact auto-detect status lines.
 M.global_labels = {
-    Pit2Plugin               = 'Pit 2.0',
-    ArkhamAsylumPlugin       = 'Pit 2.0',
+    ArkhamAsylumPlugin       = 'Arkham Asylum',
+    Pit2Plugin               = 'Arkham Asylum',
     HelltideRevampedPlugin   = 'HelltideRevamped',
     HelltideLitePlugin       = 'BetterHelltide',
     BetterHelltidePlugin     = 'BetterHelltide',

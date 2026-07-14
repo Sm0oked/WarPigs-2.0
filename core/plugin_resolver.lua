@@ -186,6 +186,14 @@ function resolver.missing_enable_hint(global_name)
             return 'enable Reaper (folder) or Reaper3.0.pack in QQT Scripts'
         end
     end
+    if (global_name == 'ArkhamAsylumPlugin' or global_name == 'Pit2Plugin') then
+        if ok and scan.has_folder then
+            if scan.has_folder('ArkhamAsylum') then
+                return 'enable ArkhamAsylum (or Pit2.0) in QQT Scripts'
+            end
+        end
+        return 'enable ArkhamAsylum / Pit2.0 in QQT Scripts'
+    end
     if global_name == 'InfernalHordesPlugin' and ok and scan.has_folder
         and scan.has_folder('Infernal Horde')
     then

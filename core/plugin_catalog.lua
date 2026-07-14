@@ -9,14 +9,14 @@ local M = {}
 
 -- folder_key (as reported by scripts_scan) -> role metadata
 M.folders = {
+    -- Canonical pit folder key. Disk folder may still be named Pit2.0 — see
+    -- disk_folder_aliases below (scan maps Pit2.0 → ArkhamAsylum).
     ArkhamAsylum = {
-        pit = { global = 'ArkhamAsylumPlugin', label = 'Arkham Asylum' },
-    },
-    ['Pit2.0'] = {
         pit = {
-            global     = 'Pit2Plugin',
-            alt_global = 'ArkhamAsylumPlugin',
-            label      = 'Pit 2.0',
+            global     = 'ArkhamAsylumPlugin',
+            alt_global = 'Pit2Plugin',
+            label      = 'Arkham Asylum',
+            id         = 'arkham',
         },
     },
     HelltideRevamped = {
@@ -72,8 +72,11 @@ M.pack_aliases = {
     ['HordeDev-1.3.9']           = 'Infernal Horde',
 }
 
--- Unpacked folder names on disk that map to a catalog folder_key
+-- Unpacked folder names on disk that map to a catalog folder_key.
+-- Scan looks for the disk folder's main.lua, then stores it under the catalog key
+-- so registry choices with folder = 'ArkhamAsylum' detect Pit2.0 installs.
 M.disk_folder_aliases = {
+    ['Pit2.0']         = 'ArkhamAsylum',
     ['HordeDev-1.3.9'] = 'Infernal Horde',
 }
 
@@ -88,6 +91,7 @@ function M.folder_key_for_pack_basename(basename)
     end
     if basename:match('^BetterHelltide') then return 'BetterHelltide' end
     if basename:match('^Chassis') then return 'Chassis' end
+    if basename:match('^Arkham') or basename:match('^Pit2') then return 'ArkhamAsylum' end
     -- Reaper3.0.pack / Reaper-v3.pack / Reaper_3.0.pack → boss role
     if basename:match('^[Rr]eaper') then return 'Reaper' end
     if basename:match('^SteroidAlfred') or basename:match('^SteroidUtils') then return 'BetterAlfred' end
@@ -120,12 +124,17 @@ end
 function M.resolve_scan_key(rel_path)
     if not rel_path or rel_path == '' then return nil end
     rel_path = rel_path:gsub('\\', '/')
+    local leaf = rel_path:match('([^/]+)$') or rel_path
     if rel_path:match('%.pack$') then
-        local base = rel_path:gsub('%.pack$', ''):match('([^/]+)$') or rel_path
+        local base = leaf:gsub('%.pack$', '')
         return M.folder_key_for_pack_basename(base)
     end
+    if M.disk_folder_aliases and M.disk_folder_aliases[leaf] then
+        return M.disk_folder_aliases[leaf]
+    end
+    if M.folders[leaf] then return leaf end
     if M.folders[rel_path] then return rel_path end
-    return rel_path
+    return leaf
 end
 
 function M.all_folder_keys()
@@ -179,6 +188,15 @@ function M.installed_scan_hit(registry_folder, folder_map)
     if folder_map[registry_folder] then return true end
     if M.disk_folder_aliases and M.disk_folder_aliases[registry_folder] then
         return folder_map[M.disk_folder_aliases[registry_folder]] ~= nil
+    end
+    -- Reverse: registry uses catalog key (ArkhamAsylum) while scan still
+    -- keyed a disk alias path briefly under Pit2.0.
+    if M.disk_folder_aliases then
+        for disk_name, catalog_key in pairs(M.disk_folder_aliases) do
+            if catalog_key == registry_folder and folder_map[disk_name] then
+                return true
+            end
+        end
     end
     for pack_base, catalog_key in pairs(M.pack_aliases) do
         if registry_folder == pack_base and folder_map[catalog_key] then
