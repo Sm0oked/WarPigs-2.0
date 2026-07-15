@@ -1,6 +1,6 @@
 # WarPigs Orchestrator
 
-**Version 2.0.8** — WarPlans quest orchestrator for Diablo IV (QQT scripts).
+**Version 2.0.9** — WarPlans quest orchestrator for Diablo IV (QQT scripts).
 
 > **Need to add a new bot or quest yourself?** See **[HOW-TO-EDIT.md](HOW-TO-EDIT.md)** — a copy-paste guide written for non-programmers, with a double-click `check_syntax.bat` to verify edits before reloading.
 
@@ -19,7 +19,7 @@ Each WarPlans activity type maps to a **role**. WarPigs resolves that role to a 
 
 | Role                   | Typical plugins                                   | Global API                                                        |
 | ---------------------- | ------------------------------------------------- | ----------------------------------------------------------------- |
-| **Pit**                | Pit 2.0 (ex Arkham Asylum)                        | `Pit2Plugin` / `ArkhamAsylumPlugin`                               |
+| **Pit**                | Arkham Asylum                                     | `ArkhamAsylumPlugin` (also accepts `Pit2Plugin` from `Pit2.0` folder) |
 | **Helltide**           | HelltideRevamped, BetterHelltide                  | `HelltideRevampedPlugin`, `HelltideLitePlugin` (BetterHelltide pack) |
 | **Undercity**          | Wonder City *(only option — no dropdown)*         | `WonderCityPlugin`                                                |
 | **Infernal Hordes**    | Infernal Horde                                    | `InfernalHordesPlugin`                                            |
@@ -56,7 +56,7 @@ Optional on-screen panel (position, opacity, font size). Works **independently**
 
 
 
-## Menu guide (v2.0.7)
+## Menu guide (v2.0.9)
 
 Open: **Z | War Pigs | Orchestrator**
 
@@ -236,7 +236,7 @@ If both are **enabled** in QQT, whichever loads last owns `ReaperPlugin` — kee
 
 These folder names under `scripts/` are recognized when you click **Scan entries**:
 
-- `Pit2.0`, `HelltideRevamped`, `BetterHelltide`, `WonderCity-2.0`
+- `ArkhamAsylum` (or disk folder `Pit2.0` — mapped as Arkham Asylum), `HelltideRevamped`, `BetterHelltide`, `WonderCity-2.0`
 - `Infernal Horde`, `Reaper` (also **`Reaper3.0.pack`** in scripts root)
 - `Batmobile`, `Chassis`, `Frigate`, `BetterAlfred`
 
@@ -253,6 +253,7 @@ Other folders with `main.lua` may appear if registered in the catalog.
 - **QQT** with Lua script injection
 - **WarPlans** quests active on the character
 - Per-activity plugins installed and **enabled in QQT Scripts** for the content you run
+- **Pit:** enable the `ArkhamAsylum` folder **or** `Pit2.0` folder in QQT Scripts (WarPigs treats both as Arkham Asylum). Only one pit bot should be enabled.
 - **BetterHelltide:** enable `BetterHelltide-*.pack` in QQT Scripts; for explicit pack use, disable the open-source `HelltideRevamped` folder if both are present
 - Recommended support plugins:
   - **Alfred** (any supported variant) for stash/salvage between activities
@@ -278,6 +279,13 @@ local st = WarPigsPlugin.status()
 
 
 ## Changelog
+
+### 2.0.9 (Arkham Asylum only for pit)
+
+- **Pit role is Arkham Asylum only** — removed Pit 2.0 as a separate menu choice / label
+- Auto and dropdown use `ArkhamAsylumPlugin` (still accepts `Pit2Plugin` if that global is what QQT exports)
+- **Fix: pit folder not detected** — installs that live as `scripts/Pit2.0` (no `ArkhamAsylum` folder) are mapped via `disk_folder_aliases` to catalog key `ArkhamAsylum`, so Scan entries and “check installs” treat them as installed
+- `resolve_scan_key` applies disk folder aliases for `package.path` entries named `Pit2.0`
 
 ### 2.0.8 (BetterHelltide enable/disable loop)
 

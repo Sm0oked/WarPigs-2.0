@@ -36,10 +36,11 @@ function M.stop_whirlwind_for_teleport(label)
     local who = label or NAV_LABEL
     local function stop_one(plugin)
         if type(plugin) ~= 'table' then return end
+        -- soft_stop only — force_stop prints "[whirlwind] FORCE STOP (remove_ok=true)"
+        -- every call (Frigate/Chassis emergency API). Kill nav source instead so WW
+        -- does not re-cast during the teleport channel.
         if type(plugin.whirlwind_soft_stop) == 'function' then
             pcall(plugin.whirlwind_soft_stop, who)
-        elseif type(plugin.whirlwind_force_stop) == 'function' then
-            pcall(plugin.whirlwind_force_stop, who)
         end
         if type(plugin.stop_long_path) == 'function' then
             pcall(plugin.stop_long_path, who)

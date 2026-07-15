@@ -1,5 +1,5 @@
 local plugin_label   = 'war_pigs'
-local plugin_version = '2.0.8'
+local plugin_version = '2.0.9'
 console.print('Lua Plugin - WarPigs - v' .. plugin_version)
 
 local registry = require 'core.plugin_registry'
@@ -62,7 +62,7 @@ gui.elements = {
 -- Undercity and Navigation have no dropdown: Wonder City is the only
 -- undercity bot, and navigation is auto-detected (Batmobile -> Frigate).
 local PLUGIN_MENU_HINTS = {
-    pit       = 'Pit bot for WarPlans pit quests and optional pit filler.',
+    pit       = 'Pit bot for WarPlans pit quests and optional pit filler.\nUses Arkham Asylum (folder ArkhamAsylum or Pit2.0).',
     helltide  = 'Helltide bot for WarPlans helltide quests.\n'
         .. 'Auto prefers HelltideRevamped when both are loaded.\n'
         .. 'Pick BetterHelltide explicitly to use the pack (HelltideLitePlugin).\n'
