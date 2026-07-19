@@ -26,9 +26,13 @@ end
 function resolver.loaded_globals(role_id)
     local out, seen = {}, {}
     for _, name in ipairs(registry.role_candidate_globals(role_id)) do
-        if name and not seen[name] and resolver.is_loaded(name) then
-            seen[name] = true
-            out[#out + 1] = name
+        if name and resolver.is_loaded(name) then
+            -- Deduplicate alias globals (ArkhamAsylumPlugin + alt, etc.)
+            local key = resolver.normalize_plugin_global(name)
+            if not seen[key] then
+                seen[key] = true
+                out[#out + 1] = key
+            end
         end
     end
     return out
@@ -150,12 +154,30 @@ function resolver.helltide_lite_plugin()
     return plugin_table('BetterHelltidePlugin')
 end
 
+-- Pit Racer exports ArkhamAsylumPlugin + Pit2Plugin as the same table.
+-- Canonical name is ArkhamAsylumPlugin so sibling teardown and Auto never
+-- treat the alias as a second Pit bot (same bug class as BetterHelltide
+-- aliases in 2.0.8).
+function resolver.pit_plugin()
+    if plugin_table('ArkhamAsylumPlugin') then return plugin_table('ArkhamAsylumPlugin') end
+    return plugin_table('Pit2Plugin')
+end
+
 function resolver.normalize_plugin_global(global_name)
     if not global_name or global_name == '' then return global_name end
     if (global_name == 'HelltideLitePlugin' or global_name == 'BetterHelltidePlugin')
         and plugin_table('HelltideLitePlugin')
     then
         return 'HelltideLitePlugin'
+    end
+    if global_name == 'ArkhamAsylumPlugin' or global_name == 'Pit2Plugin' then
+        if plugin_table('ArkhamAsylumPlugin') then
+            return 'ArkhamAsylumPlugin'
+        end
+        if plugin_table('Pit2Plugin') then
+            return 'Pit2Plugin'
+        end
+        return 'ArkhamAsylumPlugin'
     end
     return global_name
 end
@@ -187,12 +209,17 @@ function resolver.missing_enable_hint(global_name)
         end
     end
     if (global_name == 'ArkhamAsylumPlugin' or global_name == 'Pit2Plugin') then
+        local pack = resolver.find_pack_on_disk('ArkhamAsylum')
+        if pack then return 'enable ' .. pack .. ' in QQT Scripts' end
         if ok and scan.has_folder then
             if scan.has_folder('ArkhamAsylum') then
-                return 'enable ArkhamAsylum (or Pit2.0) in QQT Scripts'
+                return 'enable ArkhamAsylum / PitRacer in QQT Scripts'
+            end
+            if scan.has_folder('PitRacer') then
+                return 'enable PitRacer (or ArkhamAsylum) in QQT Scripts'
             end
         end
-        return 'enable ArkhamAsylum / Pit2.0 in QQT Scripts'
+        return 'enable PitRacerV1.pack (or ArkhamAsylum) in QQT Scripts'
     end
     if global_name == 'InfernalHordesPlugin' and ok and scan.has_folder
         and scan.has_folder('Infernal Horde')
@@ -248,30 +275,41 @@ function resolver.is_loaded(global_name)
     if global_name == 'HelltideLitePlugin' or global_name == 'BetterHelltidePlugin' then
         return type(resolver.helltide_lite_plugin()) == 'table'
     end
+    if global_name == 'ArkhamAsylumPlugin' or global_name == 'Pit2Plugin' then
+        return type(resolver.pit_plugin()) == 'table'
+    end
     return plugin_table(global_name) ~= nil
 end
 
 function resolver.plugin_is_role(plugin_name, role_id)
     local role = registry.get_role(role_id)
     if not role then return false end
+    plugin_name = resolver.normalize_plugin_global(plugin_name)
     if role.all_globals then
         for _, name in ipairs(role.all_globals) do
-            if plugin_name == name then return true end
+            if plugin_name == resolver.normalize_plugin_global(name) then return true end
         end
     end
-    return resolver.resolve_global(role_id) == plugin_name
+    local resolved = resolver.resolve_global(role_id)
+    return resolved ~= nil
+        and resolver.normalize_plugin_global(resolved) == plugin_name
 end
 
 function resolver.plugin_priority(plugin_name)
+    plugin_name = resolver.normalize_plugin_global(plugin_name)
     for role_id, role in pairs(registry.roles) do
         if role.priority then
             if role.all_globals then
                 for _, g in ipairs(role.all_globals) do
-                    if g == plugin_name then return role.priority end
+                    if resolver.normalize_plugin_global(g) == plugin_name then
+                        return role.priority
+                    end
                 end
             end
             local resolved = resolver.resolve_global(role_id)
-            if resolved == plugin_name then return role.priority end
+            if resolved and resolver.normalize_plugin_global(resolved) == plugin_name then
+                return role.priority
+            end
         end
     end
     return 0

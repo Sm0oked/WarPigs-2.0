@@ -62,7 +62,7 @@ gui.elements = {
 -- Undercity and Navigation have no dropdown: Wonder City is the only
 -- undercity bot, and navigation is auto-detected (Batmobile -> Frigate).
 local PLUGIN_MENU_HINTS = {
-    pit       = 'Pit bot for WarPlans pit quests and optional pit filler.\nUses Arkham Asylum (folder ArkhamAsylum or Pit2.0).',
+    pit       = 'Pit bot for WarPlans pit quests and optional pit filler.\nUses Pit Racer (Arkham API) or ArkhamAsylum — enable PitRacerV1.pack or ArkhamAsylum.',
     helltide  = 'Helltide bot for WarPlans helltide quests.\n'
         .. 'Auto prefers HelltideRevamped when both are loaded.\n'
         .. 'Pick BetterHelltide explicitly to use the pack (HelltideLitePlugin).\n'

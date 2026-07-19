@@ -24,18 +24,19 @@ M.roles = {
         marker      = '__pit__',
         default     = 0,
         priority    = 100,
-        -- Pit bot is Arkham Asylum. Pit2.0 on disk is the same plugin (see catalog alias).
+        -- Pit bot: Pit Racer drop-in for Arkham Asylum (same globals; see catalog).
+        -- Pit2Plugin is an alias of ArkhamAsylumPlugin — resolver normalizes both.
         all_globals  = { 'ArkhamAsylumPlugin', 'Pit2Plugin' },
         auto_globals = { 'ArkhamAsylumPlugin', 'Pit2Plugin' },
         choices = {
             {
                 id     = 'auto',
-                label  = 'Auto (Arkham Asylum)',
+                label  = 'Auto (Pit Racer / Arkham)',
                 global = nil,
             },
             {
                 id     = 'arkham',
-                label  = 'Arkham Asylum',
+                label  = 'Pit Racer (Arkham API)',
                 global = 'ArkhamAsylumPlugin',
                 alt_global = 'Pit2Plugin',
                 folder = 'ArkhamAsylum',
@@ -256,8 +257,8 @@ M.menu_roles = {
 
 -- Friendly name shown in the compact auto-detect status lines.
 M.global_labels = {
-    ArkhamAsylumPlugin       = 'Arkham Asylum',
-    Pit2Plugin               = 'Arkham Asylum',
+    ArkhamAsylumPlugin       = 'Pit Racer / Arkham Asylum',
+    Pit2Plugin               = 'Pit Racer / Arkham Asylum',
     HelltideRevampedPlugin   = 'HelltideRevamped',
     HelltideLitePlugin       = 'BetterHelltide',
     BetterHelltidePlugin     = 'BetterHelltide',

@@ -9,13 +9,13 @@ local M = {}
 
 -- folder_key (as reported by scripts_scan) -> role metadata
 M.folders = {
-    -- Canonical pit folder key. Disk folder may still be named Pit2.0 — see
-    -- disk_folder_aliases below (scan maps Pit2.0 → ArkhamAsylum).
+    -- Pit role: Pit Racer (Arkham API drop-in). Globals ArkhamAsylumPlugin +
+    -- Pit2Plugin (alias) — see plugin_resolver.normalize_plugin_global.
     ArkhamAsylum = {
         pit = {
             global     = 'ArkhamAsylumPlugin',
             alt_global = 'Pit2Plugin',
-            label      = 'Arkham Asylum',
+            label      = 'Pit Racer / Arkham Asylum',
             id         = 'arkham',
         },
     },
@@ -70,13 +70,15 @@ M.pack_aliases = {
     ['SteroidAlfredV2-1.1.1']    = 'BetterAlfred',
     ['LooteerV3']                 = 'LooteerV3',
     ['HordeDev-1.3.9']           = 'Infernal Horde',
+    ['PitRacerV1']               = 'ArkhamAsylum',
+    ['PitRacer']                 = 'ArkhamAsylum',
 }
 
 -- Unpacked folder names on disk that map to a catalog folder_key.
 -- Scan looks for the disk folder's main.lua, then stores it under the catalog key
--- so registry choices with folder = 'ArkhamAsylum' detect Pit2.0 installs.
+-- so registry choices with folder = 'ArkhamAsylum' detect PitRacer installs.
 M.disk_folder_aliases = {
-    ['Pit2.0']         = 'ArkhamAsylum',
+    ['PitRacer']       = 'ArkhamAsylum',
     ['HordeDev-1.3.9'] = 'Infernal Horde',
 }
 
@@ -91,7 +93,9 @@ function M.folder_key_for_pack_basename(basename)
     end
     if basename:match('^BetterHelltide') then return 'BetterHelltide' end
     if basename:match('^Chassis') then return 'Chassis' end
-    if basename:match('^Arkham') or basename:match('^Pit2') then return 'ArkhamAsylum' end
+    if basename:match('^Arkham') or basename:match('^PitRacer') then
+        return 'ArkhamAsylum'
+    end
     -- Reaper3.0.pack / Reaper-v3.pack / Reaper_3.0.pack → boss role
     if basename:match('^[Rr]eaper') then return 'Reaper' end
     if basename:match('^SteroidAlfred') or basename:match('^SteroidUtils') then return 'BetterAlfred' end
@@ -189,8 +193,8 @@ function M.installed_scan_hit(registry_folder, folder_map)
     if M.disk_folder_aliases and M.disk_folder_aliases[registry_folder] then
         return folder_map[M.disk_folder_aliases[registry_folder]] ~= nil
     end
-    -- Reverse: registry uses catalog key (ArkhamAsylum) while scan still
-    -- keyed a disk alias path briefly under Pit2.0.
+    -- Reverse: registry uses catalog key (ArkhamAsylum) while scan may still
+    -- briefly key a disk alias path (e.g. PitRacer).
     if M.disk_folder_aliases then
         for disk_name, catalog_key in pairs(M.disk_folder_aliases) do
             if catalog_key == registry_folder and folder_map[disk_name] then

@@ -754,14 +754,20 @@ local function disable_role_siblings(plugin_name)
         if role.all_globals then
             local in_role = false
             for _, g in ipairs(role.all_globals) do
-                if g == plugin_name then in_role = true; break end
+                if resolver.normalize_plugin_global(g) == plugin_name
+                    or g == plugin_name
+                then
+                    in_role = true
+                    break
+                end
             end
             if in_role then
                 for _, g in ipairs(role.all_globals) do
                     -- Compare NORMALIZED names: BetterHelltidePlugin is an
-                    -- alias of HelltideLitePlugin (same table), not a real
-                    -- sibling — tearing it down would kill the plugin that
-                    -- was just enabled.
+                    -- alias of HelltideLitePlugin (same table); Pit Racer's
+                    -- Pit2Plugin is an alias of ArkhamAsylumPlugin. Treating
+                    -- the alias as a real sibling would disable the plugin
+                    -- that was just enabled.
                     local g_norm = resolver.normalize_plugin_global(g)
                     if g_norm ~= plugin_name then
                         local p = _G[g]
